@@ -28,7 +28,7 @@ Chat 第一次回复会先讲一遍这个路线；之后每次回复末尾都有
 **A. 一句话启动（Chat 能联网读网页时）**：上传户型图，同一条消息里发这句话：
 
 ```text
-请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md ，按里面的说明处理我上传的户型图；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/main/chat/read-prompt.md
+请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md ，按里面的说明处理我上传的户型图；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/raw/main/chat/read-prompt.md
 ```
 
 如果 Chat 回答它打不开链接、或者没按说明给出一大段代码，就换 B。
@@ -87,7 +87,7 @@ Chat 会先用一两句话说它看到的是哪类图、打算怎么读，再讲
 
 1. 在 3D 里用「平视」转到想看的角度。
 2. 左侧工具栏点「白模」，再点「导出图片」，背景选「纯白」、画幅选「16:9」，点「导出 PNG」。生图模型用 16:9 不容易重新构图。
-3. 打开[生图提示词 image-prompt.md](image-prompt.md)（一句话启动也行：「请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/image-prompt.md ，按里面的模板帮我写提示词；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/main/chat/image-prompt.md 」），挑模板 A（只用文字描述风格）或模板 B（再加一张你喜欢的室内照片），替换方括号里的内容。
+3. 打开[生图提示词 image-prompt.md](image-prompt.md)（一句话启动也行：「请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/image-prompt.md ，按里面的模板帮我写提示词；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/raw/main/chat/image-prompt.md 」），挑模板 A（只用文字描述风格）或模板 B（再加一张你喜欢的室内照片），替换方括号里的内容。
 4. 把提示词和图片一起发给一个**能生成图片**的 Chat。
 
 出来的图是效果示意，尺寸以平面和立面为准。墙、窗、门的位置不对，就再出一次，或者换个模型。

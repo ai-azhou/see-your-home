@@ -36,7 +36,7 @@
 - **Chat 能联网读网页**：同一条消息里发这一句：
 
   ```text
-  请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md ，按里面的说明处理我上传的户型图；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/main/chat/read-prompt.md
+  请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md ，按里面的说明处理我上传的户型图；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/raw/main/chat/read-prompt.md
   ```
 
 - **Chat 不能联网**：打开[读图提示词](chat/read-prompt.md)，点「Copy raw file」整段复制粘进对话框；粘不下（约 2 万字，有的 Chat 单条消息有长度上限）就点「Download raw file」把它当附件上传，再发一句「按附件里的说明处理这张户型图」。
