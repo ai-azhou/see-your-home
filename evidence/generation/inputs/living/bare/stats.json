@@ -1,0 +1,43 @@
+{
+ "clay": {
+  "size": [
+   1920,
+   1080
+  ],
+  "mean": 179.3,
+  "std": 25.3,
+  "white_bg_frac": 0.0018
+ },
+ "depth": {
+  "valid_frac": 0.9982,
+  "p1_m": 2.411,
+  "p99_m": 6.829
+ },
+ "lines": {
+  "ink_frac_1px": 0.014,
+  "ink_frac_2px": 0.0304
+ },
+ "seg": {
+  "wall": 0.573,
+  "floor": 0.1711,
+  "ceiling": 0.0816,
+  "glass": 0.0,
+  "window": 0.0,
+  "door": 0.1702,
+  "furniture": 0.0,
+  "none": 0.0018
+ },
+ "openings": {
+  "o-living": {
+   "name": "客厅推拉门",
+   "cls": "door",
+   "px": 352833,
+   "bbox_xyxy": [
+    374,
+    117,
+    888,
+    1001
+   ]
+  }
+ }
+}

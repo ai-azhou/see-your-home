@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Offline: only the installed Node, Python and Pillow runtimes are used.
-# PYTHON can name an existing Python interpreter that already has Pillow.
+# Offline: only the installed Node, Python, NumPy and Pillow runtimes are used.
+# PYTHON can name an existing Python interpreter that already has NumPy and Pillow.
 work=''
 finish() {
   result=$?
@@ -13,7 +13,7 @@ command -v node >/dev/null 2>&1 || { echo 'Missing runtime: Node.js 20+' >&2; ex
 node -e 'if (+process.versions.node.split(".")[0] < 20) { console.error("Missing runtime: Node.js 20+"); process.exit(1) }'
 py="${PYTHON:-python3}"
 command -v "$py" >/dev/null 2>&1 || { echo 'Missing runtime: Python 3 (set PYTHON)' >&2; exit 1; }
-PYTHONDONTWRITEBYTECODE=1 "$py" -c 'import PIL' >/dev/null 2>&1 || { echo 'Missing runtime: Pillow in selected Python; nothing was installed' >&2; exit 1; }
+PYTHONDONTWRITEBYTECODE=1 "$py" -c 'import PIL, numpy' >/dev/null 2>&1 || { echo 'Missing runtime: NumPy and Pillow in selected Python; nothing was installed' >&2; exit 1; }
 repo="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/floorplan-selftest.XXXXXX")"
 cp -R "$repo/skill/see-your-home" "$work/skill"
@@ -78,3 +78,6 @@ for opening in camera['openings']:
         assert mask.histogram()[255]==opening['visible_px']
 print('v3 / cameras / renovated GLB / 16-bit depth / opening bbox / all-pass replay: PASS')
 PY
+
+node skill/scripts/plan-cli.mjs render plan.json generation --camera room:r-living --size 960x540 --passes clay,depth,lines,seg,openings
+PYTHONDONTWRITEBYTECODE=1 "$py" "$repo/scripts/regression-g1.py" "$work/skill" "$work/generation"

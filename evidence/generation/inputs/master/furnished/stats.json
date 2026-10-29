@@ -1,0 +1,54 @@
+{
+ "clay": {
+  "size": [
+   1920,
+   1080
+  ],
+  "mean": 208.4,
+  "std": 26.4,
+  "white_bg_frac": 0.0026
+ },
+ "depth": {
+  "valid_frac": 0.997,
+  "p1_m": 0.405,
+  "p99_m": 4.666
+ },
+ "lines": {
+  "ink_frac_1px": 0.0178,
+  "ink_frac_2px": 0.0381
+ },
+ "seg": {
+  "wall": 0.3089,
+  "floor": 0.0803,
+  "ceiling": 0.0442,
+  "glass": 0.0,
+  "window": 0.2926,
+  "door": 0.0364,
+  "furniture": 0.2376,
+  "none": 0.0
+ },
+ "openings": {
+  "o-bay": {
+   "name": "主卧飘窗",
+   "cls": "window",
+   "px": 402247,
+   "bbox_xyxy": [
+    330,
+    121,
+    967,
+    878
+   ]
+  },
+  "o-master-win": {
+   "name": "主卧侧窗",
+   "cls": "window",
+   "px": 204522,
+   "bbox_xyxy": [
+    1352,
+    134,
+    1773,
+    699
+   ]
+  }
+ }
+}

@@ -1,6 +1,6 @@
 # Third-party notices
 
-包清单来自随附 `scripts/plan-cli.metafile.json` 的实际打包输入；版本和许可从同一次构建使用的 npm 包读取。`rolldown/runtime.js` 是打包器注入的运行时代码，按 rolldown 包声明。第三方代码保留原许可，不适用项目的非商业许可。
+包清单来自随附 `skill/see-your-home/scripts/plan-cli.metafile.json` 的实际打包输入；版本和许可从同一次构建使用的 npm 包读取。`rolldown/runtime.js` 是打包器注入的运行时代码，按 rolldown 包声明。第三方代码保留原许可，不适用项目的非商业许可。
 
 | 包 | 版本 | 许可 | 随附位置 |
 | --- | --- | --- | --- |
@@ -13,11 +13,13 @@
 | robust-predicates | 3.0.3 | Unlicense | plan-cli.mjs |
 | splaytree | 3.2.3 | MIT | plan-cli.mjs |
 | rolldown | 1.2.15 | MIT | plan-cli.mjs |
-| gltf-validator | 2.0.0-dev.3.10 | Apache-2.0 + 其 NOTICES | scripts/vendor/gltf-validator（独立校验辅助程序，未打进 plan-cli.mjs） |
+| gltf-validator | 2.0.0-dev.3.10 | Apache-2.0 + 其 NOTICES | skill/see-your-home/scripts/vendor/gltf-validator（独立校验辅助程序，未打进 plan-cli.mjs） |
 
-Pillow：运行时需要、不随附。Python 叠图 / 提取脚本使用它；许可为 HPND，版权为 Secret Labs AB、Fredrik Lundh and contributors（具体随用户安装版本）。验证环境使用 Pillow 13.0.0。NumPy：extract_drawing.py 需要，可选，不随附；许可随用户安装版本。Node、Python 为运行时，不随附。
+Python 发布脚本的第三方运行依赖仅为 NumPy 和 Pillow，均由用户运行时提供，不随附。`gen_prompt.py` 仅用 Python 标准库；`gen_score.py` 使用 NumPy 和 Pillow，Lab / ΔE2000 与边缘运算由项目代码实现，不依赖 SciPy 或 scikit-image。Pillow 的许可为 HPND，版权为 Secret Labs AB、Fredrik Lundh and contributors；NumPy 为 BSD-3-Clause，版权归 NumPy Developers（具体以用户安装版本为准）。验证环境：NumPy 2.5.4、Pillow 13.0.0。Node、Python 为运行时，不随附。
 
-gltf-validator 版权行：# Copyright (c) 2016-2019 The Khronos Group Inc.。独立校验辅助程序包含 Dart SDK 等代码，全部原始许可和归属声明保存在 `scripts/vendor/gltf-validator/LICENSE` 与 `NOTICES`。第三方公开版权邮箱原样保留。
+仓库 `evidence/generation/tools/` 的研究版存档评分脚本另需 SciPy，研究配色脚本另需 scikit-image；这些是可选审查环境的运行依赖，不随附，也不进入 Skill zip。
+
+gltf-validator 版权行：# Copyright (c) 2016-2019 The Khronos Group Inc.。独立校验辅助程序包含 Dart SDK 等代码，全部原始许可和归属声明保存在 `skill/see-your-home/scripts/vendor/gltf-validator/LICENSE` 与 `NOTICES`。第三方公开版权邮箱原样保留。
 
 ## ajv 8.17.1
 
@@ -308,3 +310,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Logo 字体 / Logo lettering
+
+`assets/logo/` 中的 logo 属于图片，与文档一样采用 [CC BY-NC-SA 4.0](LICENSE-docs.md)。
+横版组合里的文字由 Manrope（OFL-1.1，字重 650）、思源黑体 Source Han Sans SC（OFL-1.1，Medium / 500）转曲，成品 SVG 无需加载字体。
+
+- Manrope：Copyright 2019 The Manrope Project Authors；[OFL 原文及版权声明](https://github.com/google/fonts/blob/main/ofl/manrope/OFL.txt)。
+- 思源黑体：Copyright 2014–2025 Adobe；[OFL 原文及版权声明](https://github.com/adobe-fonts/source-han-sans/blob/release/LICENSE.txt)。
+
+字体本身仍遵循各自的 OFL-1.1 许可；仓库仅发布转曲后的 logo 图片，不分发字体文件。

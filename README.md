@@ -120,6 +120,12 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | `tests/fixtures/` | 旧格式兼容回归用的样例 |
 | `scripts/selftest.sh` | 离线自测：只复制 Skill 和示例输入到临时目录跑一遍，不联网、不装依赖 |
 | `scripts/package-skill.py` | 生成 claude.ai 用的 zip；有手册源时先把手册同步进 `references/` |
+| `VERSION` / `CHANGELOG.md` | v1.1.0 版本号与变更清单 |
+| `skill/see-your-home/scripts/gen_prompt.py` | 按相机和门窗自动填生图提示词 |
+| `skill/see-your-home/scripts/gen_score.py` | 离线结构、门窗与可选风格色差检查（NumPy + Pillow） |
+| `skill/see-your-home/assets/prompts/` | 结构参考、风格照片两份通用模板 |
+| `scripts/regression-g1.py` | 提示词、结构漂移、色差离线回归 |
+| `evidence/generation/` | 三批实验的记录、全文提示词、输入、AI 产图、散列与研究打分脚本 |
 
 自测：`bash scripts/selftest.sh`，可以用 `PYTHON=/path/to/python` 指定装了 Pillow 的解释器。
 
