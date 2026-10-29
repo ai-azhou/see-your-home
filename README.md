@@ -217,7 +217,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | `tests/fixtures/` | 旧格式兼容回归用的样例 |
 | `scripts/selftest.sh` | 隔离自测：复制 Skill 和示例到临时目录；有 uv 时另跑 Python 3.14 帮助检查，可能下载解释器与依赖；无 uv 时明确跳过 |
 | `scripts/package-skill.py` | 生成 claude.ai 用的 zip；有手册源时先把手册同步进 `references/` |
-| `VERSION` / `CHANGELOG.md` | v1.1.1 版本号与变更清单 |
+| `VERSION` / `CHANGELOG.md` | v1.1.2 版本号与变更清单 |
 | `skill/see-your-home/scripts/gen_prompt.py` | 按相机和门窗自动填生图提示词 |
 | `skill/see-your-home/scripts/gen_score.py` | 离线结构、门窗与可选风格色差检查（NumPy + Pillow） |
 | `skill/see-your-home/assets/prompts/` | 结构参考、风格照片两份通用模板 |
