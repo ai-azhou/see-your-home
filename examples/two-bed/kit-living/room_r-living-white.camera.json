@@ -1,0 +1,376 @@
+{
+  "projection": "perspective",
+  "pos": [
+    5468.571428571428,
+    1450,
+    5760
+  ],
+  "target": [
+    1626.8213819163511,
+    1450,
+    4646.017693576012
+  ],
+  "fov": 75,
+  "near": 50,
+  "far": 100000,
+  "level": "L1",
+  "id": "room:r-living",
+  "description": "客餐厅，靠厨房玻璃隔断站，看向西外墙；画面里有客厅推拉门、次卧门",
+  "up": [
+    0,
+    1,
+    0
+  ],
+  "format": "floorplan-camera",
+  "version": 1,
+  "unit": "mm",
+  "width": 2400,
+  "height": 1600,
+  "state": "original",
+  "transparent": false,
+  "passes": [
+    "clay",
+    "depth",
+    "lines",
+    "seg",
+    "openings"
+  ],
+  "intrinsics": {
+    "fx": 1042.5802982729645,
+    "fy": 1042.5802982729645,
+    "cx": 1200,
+    "cy": 800
+  },
+  "viewMatrix": [
+    0.27849557660599705,
+    0,
+    0.9604375116637694,
+    0,
+    0,
+    1,
+    0,
+    0,
+    -0.9604375116637694,
+    0,
+    0.27849557660599705,
+    0,
+    4009.147113972231,
+    -1450,
+    -6856.355656463271,
+    1
+  ],
+  "projectionMatrix": [
+    0.8688169152274704,
+    0,
+    0,
+    0,
+    0,
+    1.3032253728412055,
+    0,
+    0,
+    0,
+    0,
+    -1.001000500250125,
+    -1,
+    0,
+    0,
+    -100.05002501250625,
+    0
+  ],
+  "world": "右手系 mm；x=平面 x，z=平面 y，y 向上；矩阵列主序，相机看向 -Z；bbox 为左上原点闭区间像素",
+  "openings": [
+    {
+      "idx": 7,
+      "id": "o-living",
+      "name": "客厅推拉门",
+      "kind": "sliding",
+      "cls": "door",
+      "width_mm": 2800,
+      "sill_mm": 0,
+      "head_mm": 2400,
+      "visible_px": 583110,
+      "bbox_xyxy": [
+        0,
+        175,
+        535,
+        1599
+      ],
+      "mask": "room_r-living-white.opening-007.png"
+    },
+    {
+      "idx": 9,
+      "id": "o-bed2",
+      "name": "次卧门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 214796,
+      "bbox_xyxy": [
+        1832,
+        540,
+        2098,
+        1379
+      ],
+      "mask": "room_r-living-white.opening-009.png"
+    }
+  ],
+  "depth": {
+    "encoding": "depth16.png：16-bit gray，线性相机 z 毫米；0=无几何；超过65535截断。raw-depthmm.png：R*256+G。depth-inv.png：1/z 单张 min-max 归一化，近白远黑。",
+    "min_mm": 1433.996081352234,
+    "max_mm": 6519.648551940918,
+    "clipped": false
+  },
+  "segClasses": {
+    "wall": [
+      120,
+      120,
+      120
+    ],
+    "floor": [
+      80,
+      50,
+      50
+    ],
+    "ceiling": [
+      120,
+      120,
+      80
+    ],
+    "window": [
+      230,
+      230,
+      230
+    ],
+    "door": [
+      8,
+      255,
+      51
+    ],
+    "none": [
+      0,
+      0,
+      0
+    ]
+  },
+  "openingId": "openings.png：16-bit gray = idx，0=无洞口；单扇 opening-NNN.png 为白色可见区域、黑色遮挡/背景；bbox 为闭区间",
+  "openingMasks": [
+    {
+      "idx": 1,
+      "id": "o-bed2-win",
+      "name": "次卧窗",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 1500,
+      "sill_mm": 900,
+      "head_mm": 2400,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-001.png"
+    },
+    {
+      "idx": 2,
+      "id": "o-bath-win",
+      "name": "卫生间高窗",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 800,
+      "sill_mm": 1400,
+      "head_mm": 2200,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-002.png"
+    },
+    {
+      "idx": 3,
+      "id": "o-bay",
+      "name": "主卧飘窗",
+      "kind": "bay-window",
+      "cls": "window",
+      "width_mm": 2200,
+      "sill_mm": 450,
+      "head_mm": 2400,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-003.png"
+    },
+    {
+      "idx": 4,
+      "id": "o-master-win",
+      "name": "主卧侧窗",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 1200,
+      "sill_mm": 900,
+      "head_mm": 2400,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-004.png"
+    },
+    {
+      "idx": 5,
+      "id": "o-kitchen-win",
+      "name": "厨房窗",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 1100,
+      "sill_mm": 1000,
+      "head_mm": 2300,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-005.png"
+    },
+    {
+      "idx": 6,
+      "id": "o-entry",
+      "name": "入户门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 1000,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-006.png"
+    },
+    {
+      "idx": 7,
+      "id": "o-living",
+      "name": "客厅推拉门",
+      "kind": "sliding",
+      "cls": "door",
+      "width_mm": 2800,
+      "sill_mm": 0,
+      "head_mm": 2400,
+      "visible_px": 583110,
+      "bbox_xyxy": [
+        0,
+        175,
+        535,
+        1599
+      ],
+      "mask": "room_r-living-white.opening-007.png"
+    },
+    {
+      "idx": 8,
+      "id": "o-dining",
+      "name": "餐厅落地窗",
+      "kind": "floor-window",
+      "cls": "window",
+      "width_mm": 2100,
+      "sill_mm": 50,
+      "head_mm": 2500,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-008.png"
+    },
+    {
+      "idx": 9,
+      "id": "o-bed2",
+      "name": "次卧门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 214796,
+      "bbox_xyxy": [
+        1832,
+        540,
+        2098,
+        1379
+      ],
+      "mask": "room_r-living-white.opening-009.png"
+    },
+    {
+      "idx": 10,
+      "id": "o-bath",
+      "name": "卫生间门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 800,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-010.png"
+    },
+    {
+      "idx": 11,
+      "id": "o-master",
+      "name": "主卧门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-011.png"
+    },
+    {
+      "idx": 12,
+      "id": "o-k",
+      "name": "厨房门",
+      "kind": "sliding",
+      "cls": "door",
+      "width_mm": 1300,
+      "sill_mm": 0,
+      "head_mm": 2200,
+      "visible_px": 0,
+      "bbox_xyxy": [
+        2400,
+        1600,
+        -1,
+        -1
+      ],
+      "mask": "room_r-living-white.opening-012.png"
+    }
+  ]
+}

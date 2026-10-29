@@ -1,0 +1,34 @@
+{
+  "netArea": 31,
+  "grossArea": 37.4,
+  "wallArea": 6.4,
+  "walls": 6,
+  "doors": 3,
+  "windows": 1,
+  "openings": 4,
+  "beams": 0,
+  "rooms": 3,
+  "area": 31,
+  "roomAreas": [
+    {
+      "id": "r1",
+      "name": "区域1",
+      "area": 7.4,
+      "counted": true
+    },
+    {
+      "id": "r2",
+      "name": "区域2",
+      "area": 7.4,
+      "counted": true
+    },
+    {
+      "id": "r3",
+      "name": "区域3",
+      "area": 16.3,
+      "counted": true
+    }
+  ],
+  "unansweredQuestions": 0,
+  "pendingChanges": 0
+}

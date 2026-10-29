@@ -1,0 +1,66 @@
+{
+  "netArea": 65.8,
+  "grossArea": 77.9,
+  "wallArea": 12,
+  "excludedRooms": [
+    {
+      "id": "r-bay",
+      "name": "飘窗台",
+      "area": 1.3
+    }
+  ],
+  "excludedArea": 1.3,
+  "walls": 14,
+  "doors": 6,
+  "windows": 6,
+  "openings": 12,
+  "beams": 2,
+  "rooms": 7,
+  "area": 65.8,
+  "roomAreas": [
+    {
+      "id": "r-bed2",
+      "name": "次卧",
+      "area": 10.5,
+      "counted": true
+    },
+    {
+      "id": "r-bath",
+      "name": "卫生间",
+      "area": 4.2,
+      "counted": true
+    },
+    {
+      "id": "r-master",
+      "name": "主卧",
+      "area": 12.3,
+      "counted": true
+    },
+    {
+      "id": "r-bay",
+      "name": "飘窗台",
+      "area": 1.3,
+      "counted": false
+    },
+    {
+      "id": "r-kitchen",
+      "name": "厨房",
+      "area": 4.8,
+      "counted": true
+    },
+    {
+      "id": "r-living",
+      "name": "客餐厅",
+      "area": 29,
+      "counted": true
+    },
+    {
+      "id": "r-balcony",
+      "name": "阳台",
+      "area": 5,
+      "counted": true
+    }
+  ],
+  "unansweredQuestions": 3,
+  "pendingChanges": 1
+}

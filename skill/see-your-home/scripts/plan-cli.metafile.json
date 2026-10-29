@@ -1,0 +1,807 @@
+{
+  "bundler": "vite/rolldown generateBundle",
+  "coreCommit": "3451801d07b69a740140cb8915774c88fe9fb8e8",
+  "inputs": {
+    "rolldown/runtime.js": {
+      "renderedLength": 1733
+    },
+    "src/core/types.ts": {
+      "renderedLength": 824
+    },
+    "src/core/levels.ts": {
+      "renderedLength": 1769
+    },
+    "src/core/geometry.ts": {
+      "renderedLength": 8149
+    },
+    "src/core/protection.ts": {
+      "renderedLength": 238
+    },
+    "src/core/mirror-frame.ts": {
+      "renderedLength": 857
+    },
+    "node_modules/splaytree/dist/splaytree.js": {
+      "renderedLength": 8264
+    },
+    "node_modules/robust-predicates/esm/util.js": {
+      "renderedLength": 1659
+    },
+    "node_modules/robust-predicates/esm/orient2d.js": {
+      "renderedLength": 4666
+    },
+    "node_modules/robust-predicates/esm/orient3d.js": {
+      "renderedLength": 423
+    },
+    "node_modules/robust-predicates/esm/incircle.js": {
+      "renderedLength": 623
+    },
+    "node_modules/robust-predicates/esm/insphere.js": {
+      "renderedLength": 951
+    },
+    "node_modules/robust-predicates/index.js": {
+      "renderedLength": 0
+    },
+    "node_modules/polygon-clipping/dist/polygon-clipping.esm.js": {
+      "renderedLength": 36061
+    },
+    "src/core/walls.ts": {
+      "renderedLength": 2672
+    },
+    "src/core/decor/math.ts": {
+      "renderedLength": 1361
+    },
+    "src/core/decor/faces.ts": {
+      "renderedLength": 4970
+    },
+    "src/core/decor/panels.ts": {
+      "renderedLength": 4052
+    },
+    "src/core/decor/cabinets.ts": {
+      "renderedLength": 5917
+    },
+    "src/core/decor/furniture.ts": {
+      "renderedLength": 5368
+    },
+    "src/core/decor/legacy.ts": {
+      "renderedLength": 2751
+    },
+    "src/core/decor/presets.ts": {
+      "renderedLength": 7073
+    },
+    "node_modules/ajv/dist/compile/codegen/code.js": {
+      "renderedLength": 4167
+    },
+    "node_modules/ajv/dist/compile/codegen/scope.js": {
+      "renderedLength": 4594
+    },
+    "node_modules/ajv/dist/compile/codegen/index.js": {
+      "renderedLength": 18970
+    },
+    "node_modules/ajv/dist/compile/util.js": {
+      "renderedLength": 6412
+    },
+    "node_modules/ajv/dist/compile/names.js": {
+      "renderedLength": 953
+    },
+    "node_modules/ajv/dist/compile/errors.js": {
+      "renderedLength": 5422
+    },
+    "node_modules/ajv/dist/compile/validate/boolSchema.js": {
+      "renderedLength": 1344
+    },
+    "node_modules/ajv/dist/compile/rules.js": {
+      "renderedLength": 1024
+    },
+    "node_modules/ajv/dist/compile/validate/applicability.js": {
+      "renderedLength": 921
+    },
+    "node_modules/ajv/dist/compile/validate/dataType.js": {
+      "renderedLength": 7238
+    },
+    "node_modules/ajv/dist/compile/validate/defaults.js": {
+      "renderedLength": 1270
+    },
+    "node_modules/ajv/dist/vocabularies/code.js": {
+      "renderedLength": 5604
+    },
+    "node_modules/ajv/dist/compile/validate/keyword.js": {
+      "renderedLength": 5158
+    },
+    "node_modules/ajv/dist/compile/validate/subschema.js": {
+      "renderedLength": 3293
+    },
+    "node_modules/fast-deep-equal/index.js": {
+      "renderedLength": 1150
+    },
+    "node_modules/json-schema-traverse/index.js": {
+      "renderedLength": 2405
+    },
+    "node_modules/ajv/dist/compile/resolve.js": {
+      "renderedLength": 4278
+    },
+    "node_modules/ajv/dist/compile/validate/index.js": {
+      "renderedLength": 17600
+    },
+    "node_modules/ajv/dist/runtime/validation_error.js": {
+      "renderedLength": 406
+    },
+    "node_modules/ajv/dist/compile/ref_error.js": {
+      "renderedLength": 601
+    },
+    "node_modules/ajv/dist/compile/index.js": {
+      "renderedLength": 7968
+    },
+    "node_modules/ajv/dist/refs/data.json": {
+      "renderedLength": 989
+    },
+    "node_modules/fast-uri/lib/utils.js": {
+      "renderedLength": 20780
+    },
+    "node_modules/fast-uri/lib/schemes.js": {
+      "renderedLength": 6394
+    },
+    "node_modules/fast-uri/index.js": {
+      "renderedLength": 20333
+    },
+    "node_modules/ajv/dist/runtime/uri.js": {
+      "renderedLength": 285
+    },
+    "node_modules/ajv/dist/core.js": {
+      "renderedLength": 20202
+    },
+    "node_modules/ajv/dist/vocabularies/core/id.js": {
+      "renderedLength": 334
+    },
+    "node_modules/ajv/dist/vocabularies/core/ref.js": {
+      "renderedLength": 4363
+    },
+    "node_modules/ajv/dist/vocabularies/core/index.js": {
+      "renderedLength": 409
+    },
+    "node_modules/ajv/dist/vocabularies/validation/limitNumber.js": {
+      "renderedLength": 1101
+    },
+    "node_modules/ajv/dist/vocabularies/validation/multipleOf.js": {
+      "renderedLength": 933
+    },
+    "node_modules/ajv/dist/runtime/ucs2length.js": {
+      "renderedLength": 618
+    },
+    "node_modules/ajv/dist/vocabularies/validation/limitLength.js": {
+      "renderedLength": 1108
+    },
+    "node_modules/ajv/dist/vocabularies/validation/pattern.js": {
+      "renderedLength": 861
+    },
+    "node_modules/ajv/dist/vocabularies/validation/limitProperties.js": {
+      "renderedLength": 917
+    },
+    "node_modules/ajv/dist/vocabularies/validation/required.js": {
+      "renderedLength": 2585
+    },
+    "node_modules/ajv/dist/vocabularies/validation/limitItems.js": {
+      "renderedLength": 868
+    },
+    "node_modules/ajv/dist/runtime/equal.js": {
+      "renderedLength": 304
+    },
+    "node_modules/ajv/dist/vocabularies/validation/uniqueItems.js": {
+      "renderedLength": 2638
+    },
+    "node_modules/ajv/dist/vocabularies/validation/const.js": {
+      "renderedLength": 794
+    },
+    "node_modules/ajv/dist/vocabularies/validation/enum.js": {
+      "renderedLength": 1682
+    },
+    "node_modules/ajv/dist/vocabularies/validation/index.js": {
+      "renderedLength": 1010
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/additionalItems.js": {
+      "renderedLength": 1845
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/items.js": {
+      "renderedLength": 1861
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/prefixItems.js": {
+      "renderedLength": 429
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/items2020.js": {
+      "renderedLength": 986
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/contains.js": {
+      "renderedLength": 3041
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/dependencies.js": {
+      "renderedLength": 2883
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/propertyNames.js": {
+      "renderedLength": 1072
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js": {
+      "renderedLength": 3385
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/properties.js": {
+      "renderedLength": 1836
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/patternProperties.js": {
+      "renderedLength": 2322
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/not.js": {
+      "renderedLength": 742
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/anyOf.js": {
+      "renderedLength": 389
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/oneOf.js": {
+      "renderedLength": 1635
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/allOf.js": {
+      "renderedLength": 739
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/if.js": {
+      "renderedLength": 2070
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/thenElse.js": {
+      "renderedLength": 488
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/index.js": {
+      "renderedLength": 1426
+    },
+    "node_modules/ajv/dist/vocabularies/dynamic/dynamicAnchor.js": {
+      "renderedLength": 1295
+    },
+    "node_modules/ajv/dist/vocabularies/dynamic/dynamicRef.js": {
+      "renderedLength": 1343
+    },
+    "node_modules/ajv/dist/vocabularies/dynamic/recursiveAnchor.js": {
+      "renderedLength": 550
+    },
+    "node_modules/ajv/dist/vocabularies/dynamic/recursiveRef.js": {
+      "renderedLength": 402
+    },
+    "node_modules/ajv/dist/vocabularies/dynamic/index.js": {
+      "renderedLength": 534
+    },
+    "node_modules/ajv/dist/vocabularies/validation/dependentRequired.js": {
+      "renderedLength": 472
+    },
+    "node_modules/ajv/dist/vocabularies/applicator/dependentSchemas.js": {
+      "renderedLength": 436
+    },
+    "node_modules/ajv/dist/vocabularies/validation/limitContains.js": {
+      "renderedLength": 528
+    },
+    "node_modules/ajv/dist/vocabularies/next.js": {
+      "renderedLength": 468
+    },
+    "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedProperties.js": {
+      "renderedLength": 2174
+    },
+    "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedItems.js": {
+      "renderedLength": 1474
+    },
+    "node_modules/ajv/dist/vocabularies/unevaluated/index.js": {
+      "renderedLength": 432
+    },
+    "node_modules/ajv/dist/vocabularies/format/format.js": {
+      "renderedLength": 3567
+    },
+    "node_modules/ajv/dist/vocabularies/format/index.js": {
+      "renderedLength": 261
+    },
+    "node_modules/ajv/dist/vocabularies/metadata.js": {
+      "renderedLength": 485
+    },
+    "node_modules/ajv/dist/vocabularies/draft2020.js": {
+      "renderedLength": 788
+    },
+    "node_modules/ajv/dist/vocabularies/discriminator/types.js": {
+      "renderedLength": 393
+    },
+    "node_modules/ajv/dist/vocabularies/discriminator/index.js": {
+      "renderedLength": 3984
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/schema.json": {
+      "renderedLength": 2832
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/applicator.json": {
+      "renderedLength": 2133
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/unevaluated.json": {
+      "renderedLength": 1173
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/content.json": {
+      "renderedLength": 1155
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/core.json": {
+      "renderedLength": 1964
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/format-annotation.json": {
+      "renderedLength": 1154
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/meta-data.json": {
+      "renderedLength": 1380
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/meta/validation.json": {
+      "renderedLength": 2752
+    },
+    "node_modules/ajv/dist/refs/json-schema-2020-12/index.js": {
+      "renderedLength": 1276
+    },
+    "node_modules/ajv/dist/2020.js": {
+      "renderedLength": 2835
+    },
+    "schema/plan.schema.json": {
+      "renderedLength": 38628
+    },
+    "src/core/schema.ts": {
+      "renderedLength": 500
+    },
+    "src/core/legacy.ts": {
+      "renderedLength": 16076
+    },
+    "src/core/io.ts": {
+      "renderedLength": 5486
+    },
+    "src/core/decor/surfaces.ts": {
+      "renderedLength": 14374
+    },
+    "src/core/decor/embed.ts": {
+      "renderedLength": 7016
+    },
+    "src/core/decor/validate.ts": {
+      "renderedLength": 13933
+    },
+    "src/core/decor/integration.ts": {
+      "renderedLength": 1254
+    },
+    "src/core/validate.ts": {
+      "renderedLength": 11307
+    },
+    "src/core/changes.ts": {
+      "renderedLength": 13603
+    },
+    "src/core/decor/resolve.ts": {
+      "renderedLength": 15381
+    },
+    "src/core/persistence.ts": {
+      "renderedLength": 1399
+    },
+    "node_modules/earcut/src/earcut.js": {
+      "renderedLength": 19326
+    },
+    "src/core/opening-symbol.ts": {
+      "renderedLength": 2878
+    },
+    "src/core/solids.ts": {
+      "renderedLength": 11845
+    },
+    "src/core/mesh.ts": {
+      "renderedLength": 6978
+    },
+    "src/core/glb.ts": {
+      "renderedLength": 3886
+    },
+    "src/core/raster.ts": {
+      "renderedLength": 50614
+    },
+    "src/core/summary.ts": {
+      "renderedLength": 3442
+    },
+    "schema/generate.ts": {
+      "renderedLength": 88963
+    },
+    "scripts/plan.ts": {
+      "renderedLength": 10461
+    }
+  },
+  "outputs": {
+    "plan-cli.mjs": {
+      "inputs": {
+        "rolldown/runtime.js": {
+          "renderedLength": 1733
+        },
+        "src/core/types.ts": {
+          "renderedLength": 824
+        },
+        "src/core/levels.ts": {
+          "renderedLength": 1769
+        },
+        "src/core/geometry.ts": {
+          "renderedLength": 8149
+        },
+        "src/core/protection.ts": {
+          "renderedLength": 238
+        },
+        "src/core/mirror-frame.ts": {
+          "renderedLength": 857
+        },
+        "node_modules/splaytree/dist/splaytree.js": {
+          "renderedLength": 8264
+        },
+        "node_modules/robust-predicates/esm/util.js": {
+          "renderedLength": 1659
+        },
+        "node_modules/robust-predicates/esm/orient2d.js": {
+          "renderedLength": 4666
+        },
+        "node_modules/robust-predicates/esm/orient3d.js": {
+          "renderedLength": 423
+        },
+        "node_modules/robust-predicates/esm/incircle.js": {
+          "renderedLength": 623
+        },
+        "node_modules/robust-predicates/esm/insphere.js": {
+          "renderedLength": 951
+        },
+        "node_modules/robust-predicates/index.js": {
+          "renderedLength": 0
+        },
+        "node_modules/polygon-clipping/dist/polygon-clipping.esm.js": {
+          "renderedLength": 36061
+        },
+        "src/core/walls.ts": {
+          "renderedLength": 2672
+        },
+        "src/core/decor/math.ts": {
+          "renderedLength": 1361
+        },
+        "src/core/decor/faces.ts": {
+          "renderedLength": 4970
+        },
+        "src/core/decor/panels.ts": {
+          "renderedLength": 4052
+        },
+        "src/core/decor/cabinets.ts": {
+          "renderedLength": 5917
+        },
+        "src/core/decor/furniture.ts": {
+          "renderedLength": 5368
+        },
+        "src/core/decor/legacy.ts": {
+          "renderedLength": 2751
+        },
+        "src/core/decor/presets.ts": {
+          "renderedLength": 7073
+        },
+        "node_modules/ajv/dist/compile/codegen/code.js": {
+          "renderedLength": 4167
+        },
+        "node_modules/ajv/dist/compile/codegen/scope.js": {
+          "renderedLength": 4594
+        },
+        "node_modules/ajv/dist/compile/codegen/index.js": {
+          "renderedLength": 18970
+        },
+        "node_modules/ajv/dist/compile/util.js": {
+          "renderedLength": 6412
+        },
+        "node_modules/ajv/dist/compile/names.js": {
+          "renderedLength": 953
+        },
+        "node_modules/ajv/dist/compile/errors.js": {
+          "renderedLength": 5422
+        },
+        "node_modules/ajv/dist/compile/validate/boolSchema.js": {
+          "renderedLength": 1344
+        },
+        "node_modules/ajv/dist/compile/rules.js": {
+          "renderedLength": 1024
+        },
+        "node_modules/ajv/dist/compile/validate/applicability.js": {
+          "renderedLength": 921
+        },
+        "node_modules/ajv/dist/compile/validate/dataType.js": {
+          "renderedLength": 7238
+        },
+        "node_modules/ajv/dist/compile/validate/defaults.js": {
+          "renderedLength": 1270
+        },
+        "node_modules/ajv/dist/vocabularies/code.js": {
+          "renderedLength": 5604
+        },
+        "node_modules/ajv/dist/compile/validate/keyword.js": {
+          "renderedLength": 5158
+        },
+        "node_modules/ajv/dist/compile/validate/subschema.js": {
+          "renderedLength": 3293
+        },
+        "node_modules/fast-deep-equal/index.js": {
+          "renderedLength": 1150
+        },
+        "node_modules/json-schema-traverse/index.js": {
+          "renderedLength": 2405
+        },
+        "node_modules/ajv/dist/compile/resolve.js": {
+          "renderedLength": 4278
+        },
+        "node_modules/ajv/dist/compile/validate/index.js": {
+          "renderedLength": 17600
+        },
+        "node_modules/ajv/dist/runtime/validation_error.js": {
+          "renderedLength": 406
+        },
+        "node_modules/ajv/dist/compile/ref_error.js": {
+          "renderedLength": 601
+        },
+        "node_modules/ajv/dist/compile/index.js": {
+          "renderedLength": 7968
+        },
+        "node_modules/ajv/dist/refs/data.json": {
+          "renderedLength": 989
+        },
+        "node_modules/fast-uri/lib/utils.js": {
+          "renderedLength": 20780
+        },
+        "node_modules/fast-uri/lib/schemes.js": {
+          "renderedLength": 6394
+        },
+        "node_modules/fast-uri/index.js": {
+          "renderedLength": 20333
+        },
+        "node_modules/ajv/dist/runtime/uri.js": {
+          "renderedLength": 285
+        },
+        "node_modules/ajv/dist/core.js": {
+          "renderedLength": 20202
+        },
+        "node_modules/ajv/dist/vocabularies/core/id.js": {
+          "renderedLength": 334
+        },
+        "node_modules/ajv/dist/vocabularies/core/ref.js": {
+          "renderedLength": 4363
+        },
+        "node_modules/ajv/dist/vocabularies/core/index.js": {
+          "renderedLength": 409
+        },
+        "node_modules/ajv/dist/vocabularies/validation/limitNumber.js": {
+          "renderedLength": 1101
+        },
+        "node_modules/ajv/dist/vocabularies/validation/multipleOf.js": {
+          "renderedLength": 933
+        },
+        "node_modules/ajv/dist/runtime/ucs2length.js": {
+          "renderedLength": 618
+        },
+        "node_modules/ajv/dist/vocabularies/validation/limitLength.js": {
+          "renderedLength": 1108
+        },
+        "node_modules/ajv/dist/vocabularies/validation/pattern.js": {
+          "renderedLength": 861
+        },
+        "node_modules/ajv/dist/vocabularies/validation/limitProperties.js": {
+          "renderedLength": 917
+        },
+        "node_modules/ajv/dist/vocabularies/validation/required.js": {
+          "renderedLength": 2585
+        },
+        "node_modules/ajv/dist/vocabularies/validation/limitItems.js": {
+          "renderedLength": 868
+        },
+        "node_modules/ajv/dist/runtime/equal.js": {
+          "renderedLength": 304
+        },
+        "node_modules/ajv/dist/vocabularies/validation/uniqueItems.js": {
+          "renderedLength": 2638
+        },
+        "node_modules/ajv/dist/vocabularies/validation/const.js": {
+          "renderedLength": 794
+        },
+        "node_modules/ajv/dist/vocabularies/validation/enum.js": {
+          "renderedLength": 1682
+        },
+        "node_modules/ajv/dist/vocabularies/validation/index.js": {
+          "renderedLength": 1010
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/additionalItems.js": {
+          "renderedLength": 1845
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/items.js": {
+          "renderedLength": 1861
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/prefixItems.js": {
+          "renderedLength": 429
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/items2020.js": {
+          "renderedLength": 986
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/contains.js": {
+          "renderedLength": 3041
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/dependencies.js": {
+          "renderedLength": 2883
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/propertyNames.js": {
+          "renderedLength": 1072
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/additionalProperties.js": {
+          "renderedLength": 3385
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/properties.js": {
+          "renderedLength": 1836
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/patternProperties.js": {
+          "renderedLength": 2322
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/not.js": {
+          "renderedLength": 742
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/anyOf.js": {
+          "renderedLength": 389
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/oneOf.js": {
+          "renderedLength": 1635
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/allOf.js": {
+          "renderedLength": 739
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/if.js": {
+          "renderedLength": 2070
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/thenElse.js": {
+          "renderedLength": 488
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/index.js": {
+          "renderedLength": 1426
+        },
+        "node_modules/ajv/dist/vocabularies/dynamic/dynamicAnchor.js": {
+          "renderedLength": 1295
+        },
+        "node_modules/ajv/dist/vocabularies/dynamic/dynamicRef.js": {
+          "renderedLength": 1343
+        },
+        "node_modules/ajv/dist/vocabularies/dynamic/recursiveAnchor.js": {
+          "renderedLength": 550
+        },
+        "node_modules/ajv/dist/vocabularies/dynamic/recursiveRef.js": {
+          "renderedLength": 402
+        },
+        "node_modules/ajv/dist/vocabularies/dynamic/index.js": {
+          "renderedLength": 534
+        },
+        "node_modules/ajv/dist/vocabularies/validation/dependentRequired.js": {
+          "renderedLength": 472
+        },
+        "node_modules/ajv/dist/vocabularies/applicator/dependentSchemas.js": {
+          "renderedLength": 436
+        },
+        "node_modules/ajv/dist/vocabularies/validation/limitContains.js": {
+          "renderedLength": 528
+        },
+        "node_modules/ajv/dist/vocabularies/next.js": {
+          "renderedLength": 468
+        },
+        "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedProperties.js": {
+          "renderedLength": 2174
+        },
+        "node_modules/ajv/dist/vocabularies/unevaluated/unevaluatedItems.js": {
+          "renderedLength": 1474
+        },
+        "node_modules/ajv/dist/vocabularies/unevaluated/index.js": {
+          "renderedLength": 432
+        },
+        "node_modules/ajv/dist/vocabularies/format/format.js": {
+          "renderedLength": 3567
+        },
+        "node_modules/ajv/dist/vocabularies/format/index.js": {
+          "renderedLength": 261
+        },
+        "node_modules/ajv/dist/vocabularies/metadata.js": {
+          "renderedLength": 485
+        },
+        "node_modules/ajv/dist/vocabularies/draft2020.js": {
+          "renderedLength": 788
+        },
+        "node_modules/ajv/dist/vocabularies/discriminator/types.js": {
+          "renderedLength": 393
+        },
+        "node_modules/ajv/dist/vocabularies/discriminator/index.js": {
+          "renderedLength": 3984
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/schema.json": {
+          "renderedLength": 2832
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/applicator.json": {
+          "renderedLength": 2133
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/unevaluated.json": {
+          "renderedLength": 1173
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/content.json": {
+          "renderedLength": 1155
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/core.json": {
+          "renderedLength": 1964
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/format-annotation.json": {
+          "renderedLength": 1154
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/meta-data.json": {
+          "renderedLength": 1380
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/meta/validation.json": {
+          "renderedLength": 2752
+        },
+        "node_modules/ajv/dist/refs/json-schema-2020-12/index.js": {
+          "renderedLength": 1276
+        },
+        "node_modules/ajv/dist/2020.js": {
+          "renderedLength": 2835
+        },
+        "schema/plan.schema.json": {
+          "renderedLength": 38628
+        },
+        "src/core/schema.ts": {
+          "renderedLength": 500
+        },
+        "src/core/legacy.ts": {
+          "renderedLength": 16076
+        },
+        "src/core/io.ts": {
+          "renderedLength": 5486
+        },
+        "src/core/decor/surfaces.ts": {
+          "renderedLength": 14374
+        },
+        "src/core/decor/embed.ts": {
+          "renderedLength": 7016
+        },
+        "src/core/decor/validate.ts": {
+          "renderedLength": 13933
+        },
+        "src/core/decor/integration.ts": {
+          "renderedLength": 1254
+        },
+        "src/core/validate.ts": {
+          "renderedLength": 11307
+        },
+        "src/core/changes.ts": {
+          "renderedLength": 13603
+        },
+        "src/core/decor/resolve.ts": {
+          "renderedLength": 15381
+        },
+        "src/core/persistence.ts": {
+          "renderedLength": 1399
+        },
+        "node_modules/earcut/src/earcut.js": {
+          "renderedLength": 19326
+        },
+        "src/core/opening-symbol.ts": {
+          "renderedLength": 2878
+        },
+        "src/core/solids.ts": {
+          "renderedLength": 11845
+        },
+        "src/core/mesh.ts": {
+          "renderedLength": 6978
+        },
+        "src/core/glb.ts": {
+          "renderedLength": 3886
+        },
+        "src/core/raster.ts": {
+          "renderedLength": 50614
+        },
+        "src/core/summary.ts": {
+          "renderedLength": 3442
+        },
+        "schema/generate.ts": {
+          "renderedLength": 88963
+        },
+        "scripts/plan.ts": {
+          "renderedLength": 10461
+        }
+      },
+      "imports": [
+        "node:module",
+        "node:fs",
+        "node:path",
+        "node:zlib"
+      ],
+      "dynamicImports": [
+        "plan-cli.mjs"
+      ]
+    }
+  }
+}

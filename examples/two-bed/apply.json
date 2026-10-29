@@ -1,0 +1,54 @@
+{
+  "results": [
+    {
+      "id": "c1",
+      "ok": true,
+      "affected": [],
+      "removed": [
+        "w-b"
+      ]
+    },
+    {
+      "id": "c2",
+      "ok": true,
+      "affected": [
+        "w-new1"
+      ],
+      "removed": []
+    },
+    {
+      "id": "c3",
+      "ok": true,
+      "affected": [],
+      "removed": [
+        "o-bed2"
+      ]
+    },
+    {
+      "id": "c4",
+      "ok": true,
+      "affected": [
+        "r-bed2"
+      ],
+      "removed": []
+    },
+    {
+      "id": "c5",
+      "ok": false,
+      "affected": [],
+      "removed": [],
+      "needsConfirm": true,
+      "error": "削减、移动、改类型、拆除或开洞承重墙、外墙、承重情况不确定的墙需要用户二次确认"
+    },
+    {
+      "id": "change1",
+      "ok": true,
+      "affected": [],
+      "removed": [
+        "o-master",
+        "w-m"
+      ]
+    }
+  ],
+  "issues": []
+}

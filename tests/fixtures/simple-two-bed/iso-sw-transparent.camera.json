@@ -1,0 +1,262 @@
+{
+  "projection": "orthographic",
+  "id": "iso-sw",
+  "pos": [
+    -2452.913903685145,
+    19135.264361307818,
+    16195.067216952966
+  ],
+  "target": [
+    3600.0000000000014,
+    1400.0000000000002,
+    2600
+  ],
+  "up": [
+    0.3115783452410838,
+    0.6427876096865395,
+    -0.699816421363698
+  ],
+  "span": 11075.871687743103,
+  "near": 1,
+  "far": 69455.23012645863,
+  "format": "floorplan-camera",
+  "version": 1,
+  "unit": "mm",
+  "width": 2400,
+  "height": 1600,
+  "state": "original",
+  "transparent": true,
+  "passes": [
+    "clay"
+  ],
+  "intrinsics": {
+    "fx": 0.14445815599061235,
+    "fy": 0.14445815599061235,
+    "cx": 1200,
+    "cy": 800
+  },
+  "viewMatrix": [
+    0.913545457642601,
+    0.3115783452410838,
+    -0.2614452745746207,
+    0,
+    -2.7755575615628914e-17,
+    0.6427876096865395,
+    0.7660444431189779,
+    0,
+    0.40673664307580015,
+    -0.699816421363698,
+    0.5872157010580832,
+    0,
+    -4346.278919510445,
+    -202.06200088344485,
+    -24809.763430135157,
+    1
+  ],
+  "projectionMatrix": [
+    0.00012038179665884361,
+    0,
+    0,
+    0,
+    0,
+    0.00018057269498826542,
+    0,
+    0,
+    0,
+    0,
+    -0.000028795942253747606,
+    0,
+    0,
+    0,
+    -1.0000287959422538,
+    1
+  ],
+  "world": "右手系 mm；x=平面 x，z=平面 y，y 向上；矩阵列主序，相机看向 -Z；bbox 为左上原点闭区间像素",
+  "openings": [
+    {
+      "idx": 1,
+      "id": "window0",
+      "name": "window0",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 1600,
+      "sill_mm": 900,
+      "head_mm": 2400,
+      "visible_px": 26553,
+      "bbox_xyxy": [
+        847,
+        473,
+        1033,
+        676
+      ],
+      "mask": "iso-sw-transparent.opening-001.png"
+    },
+    {
+      "idx": 2,
+      "id": "doors:0",
+      "name": "入口",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 23728,
+      "bbox_xyxy": [
+        1590,
+        875,
+        1709,
+        1112
+      ],
+      "mask": "iso-sw-transparent.opening-002.png"
+    },
+    {
+      "idx": 3,
+      "id": "doors:1",
+      "name": "内门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 23727,
+      "bbox_xyxy": [
+        928,
+        798,
+        1047,
+        1035
+      ],
+      "mask": "iso-sw-transparent.opening-003.png"
+    },
+    {
+      "idx": 4,
+      "id": "slides:0",
+      "name": "slides:0",
+      "kind": "sliding",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2200,
+      "visible_px": 4263,
+      "bbox_xyxy": [
+        1177,
+        744,
+        1197,
+        964
+      ],
+      "mask": "iso-sw-transparent.opening-004.png"
+    }
+  ],
+  "depth": {
+    "encoding": "depth16.png：16-bit gray，线性相机 z 毫米；0=无几何；超过65535截断。raw-depthmm.png：R*256+G。depth-inv.png：1/z 单张 min-max 归一化，近白远黑。",
+    "min_mm": 19612.089157104492,
+    "max_mm": 26519.651412963867,
+    "clipped": false
+  },
+  "segClasses": {
+    "wall": [
+      120,
+      120,
+      120
+    ],
+    "floor": [
+      80,
+      50,
+      50
+    ],
+    "ceiling": [
+      120,
+      120,
+      80
+    ],
+    "window": [
+      230,
+      230,
+      230
+    ],
+    "door": [
+      8,
+      255,
+      51
+    ],
+    "none": [
+      0,
+      0,
+      0
+    ]
+  },
+  "openingId": "openings.png：16-bit gray = idx，0=无洞口；单扇 opening-NNN.png 为白色可见区域、黑色遮挡/背景；bbox 为闭区间",
+  "openingMasks": [
+    {
+      "idx": 1,
+      "id": "window0",
+      "name": "window0",
+      "kind": "window",
+      "cls": "window",
+      "width_mm": 1600,
+      "sill_mm": 900,
+      "head_mm": 2400,
+      "visible_px": 26553,
+      "bbox_xyxy": [
+        847,
+        473,
+        1033,
+        676
+      ],
+      "mask": "iso-sw-transparent.opening-001.png"
+    },
+    {
+      "idx": 2,
+      "id": "doors:0",
+      "name": "入口",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 23728,
+      "bbox_xyxy": [
+        1590,
+        875,
+        1709,
+        1112
+      ],
+      "mask": "iso-sw-transparent.opening-002.png"
+    },
+    {
+      "idx": 3,
+      "id": "doors:1",
+      "name": "内门",
+      "kind": "door",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2100,
+      "visible_px": 23727,
+      "bbox_xyxy": [
+        928,
+        798,
+        1047,
+        1035
+      ],
+      "mask": "iso-sw-transparent.opening-003.png"
+    },
+    {
+      "idx": 4,
+      "id": "slides:0",
+      "name": "slides:0",
+      "kind": "sliding",
+      "cls": "door",
+      "width_mm": 900,
+      "sill_mm": 0,
+      "head_mm": 2200,
+      "visible_px": 4263,
+      "bbox_xyxy": [
+        1177,
+        744,
+        1197,
+        964
+      ],
+      "mask": "iso-sw-transparent.opening-004.png"
+    }
+  ]
+}
