@@ -39,6 +39,8 @@ The example is a fictional two-bedroom flat; all outputs are in [examples/](exam
 
 ## Install
 
+Quickest: `npx skills add ai-azhou/see-your-home` (project-level; add `-g` for user-level, `-a claude-code -y` or `-a codex -y` to pick an agent non-interactively, `--copy` to copy instead of symlink, `--list` to preview). Verified on 2026-10-29. Or copy the folder manually:
+
 Needs Node.js 20+, plus Python 3 (supported and tested: 3.12 and 3.14) with Pillow for overlays (and NumPy for scoring mood images). Nothing is installed automatically.
 
 Get the repository with `git clone https://github.com/ai-azhou/see-your-home.git` (or Code → Download ZIP on [GitHub](https://github.com/ai-azhou/see-your-home)), then copy `skill/see-your-home/` to `~/.claude/skills/` (Claude Code, [docs](https://code.claude.com/docs/en/skills)) or `~/.agents/skills/` (Codex, [docs](https://learn.chatgpt.com/docs/build-skills)); project-level folders are `.claude/skills/` and `.agents/skills/`. For claude.ai, run `python3 scripts/package-skill.py` and upload `dist/see-your-home-skill.zip` under Customize → Skills with code execution on ([guide](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills)).

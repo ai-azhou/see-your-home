@@ -82,7 +82,17 @@
 
 ### 2. 装上 Skill
 
-把仓库下载到本机，再把 `skill/see-your-home/` 整个文件夹复制到 Agent 的 Skill 目录。下面两种位置选一种（Claude Code 示例；Codex 将 `.claude` 换成 `.agents`）。先下载仓库，然后复制。
+**最省事：用 `npx skills` 一条命令装**（需要 Node；会从 GitHub 拉取，10-29 实测可用）。在放户型图的文件夹里执行：
+
+```sh
+npx skills add ai-azhou/see-your-home            # 装在当前项目，按提示选 Agent
+npx skills add ai-azhou/see-your-home -g         # 装给自己的所有项目（用户级）
+npx skills add ai-azhou/see-your-home -a claude-code -y   # 指定 Agent、跳过确认；Codex 用 -a codex
+```
+
+它默认用符号链接，想直接复制文件加 `--copy`。装之前可以先用 `npx skills add ai-azhou/see-your-home --list` 看一眼仓库里有哪个 Skill。GitHub 打不开时，用下面手动复制的办法，仓库从 Gitee 镜像下载。
+
+**或者手动复制**：把仓库下载到本机，再把 `skill/see-your-home/` 整个文件夹复制到 Agent 的 Skill 目录。下面两种位置选一种（Claude Code 示例；Codex 将 `.claude` 换成 `.agents`）。先下载仓库，然后复制。
 
 用户级，给自己的所有项目用：
 
