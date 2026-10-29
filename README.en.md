@@ -39,7 +39,7 @@ The example is a fictional two-bedroom flat; all outputs are in [examples/](exam
 
 ## Install
 
-Quickest: `npx skills add ai-azhou/see-your-home` (project-level; add `-g` for user-level, `-a claude-code -y` or `-a codex -y` to pick an agent non-interactively, `--copy` to copy instead of symlink, `--list` to preview). Verified on 2026-10-29. Or copy the folder manually:
+Quickest: `npx skills add ai-azhou/see-your-home` (project-level; add `-g` for user-level, `-a claude-code -y` or `-a codex -y` to pick an agent non-interactively, `--copy` to copy instead of symlink, `--list` to preview). If GitHub is unreachable, `npx skills add https://gitee.com/gevoll/see-your-home.git` works too. Verified on 2026-10-29. Or copy the folder manually:
 
 Needs Node.js 20+, plus Python 3 (supported and tested: 3.12 and 3.14) with Pillow for overlays (and NumPy for scoring mood images). Nothing is installed automatically.
 
