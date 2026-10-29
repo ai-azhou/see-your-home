@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "3451801d07b69a740140cb8915774c88fe9fb8e8",
+  "coreCommit": "e25495b6a85cc3104f17bd063a68c4603508377b",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -147,7 +147,7 @@
       "renderedLength": 285
     },
     "node_modules/ajv/dist/core.js": {
-      "renderedLength": 20202
+      "renderedLength": 20219
     },
     "node_modules/ajv/dist/vocabularies/core/id.js": {
       "renderedLength": 334
@@ -171,7 +171,7 @@
       "renderedLength": 1108
     },
     "node_modules/ajv/dist/vocabularies/validation/pattern.js": {
-      "renderedLength": 861
+      "renderedLength": 1247
     },
     "node_modules/ajv/dist/vocabularies/validation/limitProperties.js": {
       "renderedLength": 917
@@ -544,7 +544,7 @@
           "renderedLength": 285
         },
         "node_modules/ajv/dist/core.js": {
-          "renderedLength": 20202
+          "renderedLength": 20219
         },
         "node_modules/ajv/dist/vocabularies/core/id.js": {
           "renderedLength": 334
@@ -568,7 +568,7 @@
           "renderedLength": 1108
         },
         "node_modules/ajv/dist/vocabularies/validation/pattern.js": {
-          "renderedLength": 861
+          "renderedLength": 1247
         },
         "node_modules/ajv/dist/vocabularies/validation/limitProperties.js": {
           "renderedLength": 917

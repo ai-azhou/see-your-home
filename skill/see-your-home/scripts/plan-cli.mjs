@@ -1,4 +1,4 @@
-// Shared core base git commit: 3451801d07b69a740140cb8915774c88fe9fb8e8; plus uncommitted changes in scripts/plan.ts.
+// Shared core base git commit: e25495b6a85cc3104f17bd063a68c4603508377b; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -7547,7 +7547,7 @@ var require_core$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
 		constructor(opts = {}) {
 			this.schemas = {};
 			this.refs = {};
-			this.formats = {};
+			this.formats = Object.create(null);
 			this._compilations = /* @__PURE__ */ new Set();
 			this._loading = {};
 			this._cache = /* @__PURE__ */ new Map();
@@ -8220,6 +8220,7 @@ var require_limitLength = /* @__PURE__ */ __commonJSMin(((exports) => {
 var require_pattern = /* @__PURE__ */ __commonJSMin(((exports) => {
 	Object.defineProperty(exports, "__esModule", { value: true });
 	var code_1 = require_code();
+	var util_1 = require_util();
 	var codegen_1 = require_codegen();
 	exports.default = {
 		keyword: "pattern",
@@ -8231,10 +8232,18 @@ var require_pattern = /* @__PURE__ */ __commonJSMin(((exports) => {
 			params: ({ schemaCode }) => (0, codegen_1._)`{pattern: ${schemaCode}}`
 		},
 		code(cxt) {
-			const { data, $data, schema, schemaCode, it } = cxt;
+			const { gen, data, $data, schema, schemaCode, it } = cxt;
 			const u = it.opts.unicodeRegExp ? "u" : "";
-			const regExp = $data ? (0, codegen_1._)`(new RegExp(${schemaCode}, ${u}))` : (0, code_1.usePattern)(cxt, schema);
-			cxt.fail$data((0, codegen_1._)`!${regExp}.test(${data})`);
+			if ($data) {
+				const { regExp } = it.opts.code;
+				const regExpCode = regExp.code === "new RegExp" ? (0, codegen_1._)`new RegExp` : (0, util_1.useFunc)(gen, regExp);
+				const valid = gen.let("valid");
+				gen.try(() => gen.assign(valid, (0, codegen_1._)`${regExpCode}(${schemaCode}, ${u}).test(${data})`), () => gen.assign(valid, false));
+				cxt.fail$data((0, codegen_1._)`!${valid}`);
+			} else {
+				const regExp = (0, code_1.usePattern)(cxt, schema);
+				cxt.fail$data((0, codegen_1._)`!${regExp}.test(${data})`);
+			}
 		}
 	};
 }));

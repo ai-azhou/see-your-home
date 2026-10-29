@@ -4,7 +4,7 @@
 
 | 包 | 版本 | 许可 | 随附位置 |
 | --- | --- | --- | --- |
-| ajv | 8.17.1 | MIT | plan-cli.mjs |
+| ajv | 8.20.0 | MIT | plan-cli.mjs |
 | earcut | 3.2.4 | ISC | plan-cli.mjs |
 | fast-deep-equal | 3.1.3 | MIT | plan-cli.mjs |
 | fast-uri | 3.1.9 | BSD-3-Clause | plan-cli.mjs |
@@ -21,7 +21,7 @@ Python 发布脚本的第三方运行依赖仅为 NumPy 和 Pillow，均由用�
 
 gltf-validator 版权行：# Copyright (c) 2016-2019 The Khronos Group Inc.。独立校验辅助程序包含 Dart SDK 等代码，全部原始许可和归属声明保存在 `skill/see-your-home/scripts/vendor/gltf-validator/LICENSE` 与 `NOTICES`。第三方公开版权邮箱原样保留。
 
-## ajv 8.17.1
+## ajv 8.20.0
 
 Copyright (c) 2015-2021 Evgeny Poberezkin
 
