@@ -9,10 +9,17 @@
 """
 import argparse
 import json
-from plan_io import read_plan, write_plan
+from plan_io import read_plan, PlanValidationError
 import math
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import Image, ImageDraw, ImageFont
+except ModuleNotFoundError as error:
+    if error.name != 'PIL':
+        raise
+    import sys
+    print('需要 Pillow。用途是把读出的结构叠回户型图。装好后再试；Skill 不会自己安装', file=sys.stderr)
+    raise SystemExit(2) from None
 
 WALL_COLORS = {
     'exterior': (40, 70, 200, 120), 'bearing': (210, 40, 40, 120), 'partition': (20, 150, 80, 120),
@@ -161,7 +168,7 @@ def main():
     ap.add_argument('image'); ap.add_argument('plan'); ap.add_argument('output')
     ap.add_argument('--font', help='中文字体路径；缺省自动找系统字体')
     ap.add_argument('--scale', type=float, help='输出放大倍数；缺省小图放大到约 1600px 宽')
-    ap.add_argument('--labels', default='', help='原图标注面积（㎡）：名称或 id=面积，逗号分隔；偏差超过 5% 标出')
+    ap.add_argument('--labels', default='', help='原图标注面积（㎡）：名称或 id=面积，逗号分隔；偏差超过 5%% 标出')
     a = ap.parse_args()
     labels = {}
     for pair in a.labels.replace('，', ',').split(','):
@@ -442,5 +449,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
+    except PlanValidationError as error:
+        raise SystemExit(f'方案校验失败：{error}\n先跑 validate 查看方案问题。') from None
     except (ValueError, OSError, KeyError, TypeError) as error:
-        raise SystemExit(f'无法生成叠图：{error}') from None
+        raise SystemExit(f'{type(error).__name__}: {error}') from None

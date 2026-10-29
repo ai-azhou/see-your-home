@@ -22,6 +22,13 @@ for template in ('结构参考','风格照片'):
         assert o['name'] in result and f'{100*o["bbox_xyxy"][0]/meta["width"]:.0f}%' in result
     assert ('图4' in result) == (template == '风格照片')
     print('prompt:',template,'PASS')
+    white = subprocess.check_output([sys.executable, str(script/'gen_prompt.py'), str(camera),
+        '--style','奶油原木风', '--template',template,'--white-only'], text=True)
+    assert '图3' not in white and '图4' not in white
+    assert ('图2' in white) == (template == '风格照片')
+    assert '奶油原木风' in white and '不加窗帘、百叶、纱帘' in white
+    assert '画面可见门窗共' in white and '960×540' in white
+    print('prompt --white-only:',template,'PASS')
 
 # Scale about the center by 1.10, translate right/down by 10%, then add seeded noise.
 im = Image.open(clay).convert('RGB'); w,h=im.size

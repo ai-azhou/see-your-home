@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Offline: only the installed Node, Python, NumPy and Pillow runtimes are used.
+# Main regression is offline; optional uv smoke checks may fetch Python 3.14 and dependencies.
 # PYTHON can name an existing Python interpreter that already has NumPy and Pillow.
 work=''
 finish() {
   result=$?
   if [ -n "$work" ] && [ -d "$work" ]; then rm -rf -- "$work"; fi
-  if [ "$result" -eq 0 ]; then echo 'PASS: isolated offline Skill selftest'; else echo "FAIL: selftest (exit $result)" >&2; fi
+  if [ "$result" -eq 0 ]; then echo 'PASS: isolated Skill selftest'; else echo "FAIL: selftest (exit $result)" >&2; fi
 }
 trap finish EXIT
 command -v node >/dev/null 2>&1 || { echo 'Missing runtime: Node.js 20+' >&2; exit 1; }
@@ -17,6 +17,15 @@ PYTHONDONTWRITEBYTECODE=1 "$py" -c 'import PIL, numpy' >/dev/null 2>&1 || { echo
 repo="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/floorplan-selftest.XXXXXX")"
 cp -R "$repo/skill/see-your-home" "$work/skill"
+if command -v uv >/dev/null 2>&1; then
+  export UV_CACHE_DIR="${UV_CACHE_DIR:-$repo/.cache/uv}"
+  for script in "$work/skill/scripts/"*.py; do
+    uv run --python 3.14 --no-project --with pillow --with numpy python "$script" --help >/dev/null
+    echo "Python 3.14 --help: $(basename "$script") PASS"
+  done
+else
+  echo 'SKIP: uv unavailable; Python 3.14 --help smoke checks skipped'
+fi
 PYTHON="$py" node "$repo/scripts/regression-o5.mjs" "$work/skill"
 node "$repo/scripts/regression-o7.mjs" "$work/skill"
 PYTHONDONTWRITEBYTECODE=1 "$py" "$repo/scripts/regression-o8.py" "$work/skill"

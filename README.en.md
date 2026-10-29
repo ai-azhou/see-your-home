@@ -39,9 +39,27 @@ The example is a fictional two-bedroom flat; all outputs are in [examples/](exam
 
 ## Install
 
-Needs Node.js 20+, plus Python 3 with Pillow for overlays (and NumPy for scoring mood images). Nothing is installed automatically.
+Needs Node.js 20+, plus Python 3 (supported and tested: 3.12 and 3.14) with Pillow for overlays (and NumPy for scoring mood images). Nothing is installed automatically.
 
 Get the repository with `git clone https://github.com/ai-azhou/see-your-home.git` (or Code → Download ZIP on [GitHub](https://github.com/ai-azhou/see-your-home)), then copy `skill/see-your-home/` to `~/.claude/skills/` (Claude Code, [docs](https://code.claude.com/docs/en/skills)) or `~/.agents/skills/` (Codex, [docs](https://learn.chatgpt.com/docs/build-skills)); project-level folders are `.claude/skills/` and `.agents/skills/`. For claude.ai, run `python3 scripts/package-skill.py` and upload `dist/see-your-home-skill.zip` under Customize → Skills with code execution on ([guide](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills)).
+
+Choose one copy target (Claude Code below; replace `.claude` with `.agents` for Codex). Run from the folder containing the downloaded repository.
+
+User-level, for all your projects:
+
+```sh
+mkdir -p ~/.claude/skills
+cp -R see-your-home/skill/see-your-home ~/.claude/skills/
+```
+
+Project-level, for the folder holding your drawing:
+
+```sh
+mkdir -p home-project/.claude/skills
+cp -R see-your-home/skill/see-your-home home-project/.claude/skills/
+```
+
+After installing, start a new Agent session **in the folder holding the drawing** (`cd home-project` for the project example). Ask “Do you have the see-your-home Skill?” and have the Agent read its SKILL.md path to verify the installation.
 
 Not tested yet: whether the claude.ai cloud environment can run Node 20 and Pillow, and other Agents' skill folders.
 
@@ -67,7 +85,7 @@ The bundled scripts only read and write local files: no network, uploads or tele
 
 ## Developers
 
-Commands, the v3 plan format (millimetres), cameras and render passes are documented in [README.md](README.md#给开发者) and in `skill/see-your-home/references/`, the Agent manual (Chinese), which is synced from the companion tool by `scripts/package-skill.py`. Run `bash scripts/selftest.sh` for an isolated offline check. The companion tool is [try-your-home](https://github.com/ai-azhou/try-your-home).
+Commands, the v3 plan format (millimetres), cameras and render passes are documented in [README.md](README.md#给开发者) and in `skill/see-your-home/references/`, the Agent manual (Chinese), which is synced from the companion tool by `scripts/package-skill.py`. Run `bash scripts/selftest.sh` for an isolated check (uv, when available, also runs Python 3.14 help checks and may fetch its runtime and dependencies). The companion tool is [try-your-home](https://github.com/ai-azhou/try-your-home).
 
 ## License
 

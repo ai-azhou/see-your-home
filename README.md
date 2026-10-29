@@ -78,16 +78,25 @@
 
 ### 1. 准备环境
 
-需要 Node.js 20 以上；叠图要 Python 3 和 Pillow；生图后的自动打分另要 NumPy（不出效果图可以不装）。Skill 不会自己装这些：缺什么，Agent 会先告诉你用途，你同意才装。
+需要 Node.js 20 以上；叠图要 Python 3（支持并实测 3.12、3.14）和 Pillow；生图后的自动打分另要 NumPy（不出效果图可以不装）。Skill 不会自己装这些：缺什么，Agent 会先告诉你用途，你同意才装。
 
 ### 2. 装上 Skill
 
-把仓库下载到本机，再把 `skill/see-your-home/` 整个文件夹复制到 Agent 的 Skill 目录。Claude Code 只给自己用，在终端运行：
+把仓库下载到本机，再把 `skill/see-your-home/` 整个文件夹复制到 Agent 的 Skill 目录。下面两种位置选一种（Claude Code 示例；Codex 将 `.claude` 换成 `.agents`）。先下载仓库，然后复制。
+
+用户级，给自己的所有项目用：
 
 ```sh
 git clone https://github.com/ai-azhou/see-your-home.git
 mkdir -p ~/.claude/skills
 cp -R see-your-home/skill/see-your-home ~/.claude/skills/
+```
+
+项目级，只给放户型图的 `我的户型/` 用（在下载仓库的同一目录执行）：
+
+```sh
+mkdir -p 我的户型/.claude/skills
+cp -R see-your-home/skill/see-your-home 我的户型/.claude/skills/
 ```
 
 不用 git 的话，在 [GitHub 页面](https://github.com/ai-azhou/see-your-home) 点 Code → Download ZIP，解压后照样复制。GitHub 打不开可以用 Gitee 镜像 https://gitee.com/gevoll/see-your-home 。
@@ -98,7 +107,9 @@ cp -R see-your-home/skill/see-your-home ~/.claude/skills/
 | Codex | `~/.agents/skills/see-your-home/` | 项目里的 `.agents/skills/see-your-home/` | [OpenAI Build skills 文档](https://learn.chatgpt.com/docs/build-skills) |
 | claude.ai | 在 Customize → Skills 上传 zip，并打开代码执行 | — | [Anthropic 上传说明](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills) |
 
-装好以后**新开一个 Agent 会话**，Skill 才会被认出来。claude.ai 用的 zip 在仓库根目录运行 `python3 scripts/package-skill.py` 生成，产物是 `dist/see-your-home-skill.zip`，顶层是 `see-your-home/` 文件夹。
+装好以后，**在放户型图的文件夹里新开一个 Agent 会话**（项目级示例先 `cd 我的户型`），Skill 才会被认出来。claude.ai 用的 zip 在仓库根目录运行 `python3 scripts/package-skill.py` 生成，产物是 `dist/see-your-home-skill.zip`，顶层是 `see-your-home/` 文件夹。
+
+**确认装好了**：在新会话问「你有 see-your-home 这个 Skill 吗」，请 Agent 读出它的 SKILL.md 路径；项目级应是当前项目的 `.claude/skills/see-your-home/SKILL.md`（Codex 用 `.agents`）。
 
 **还没实测的**：claude.ai 云端环境能不能跑 Node 20 和 Pillow，我们没有上传试过。其他支持 Skill 的 Agent，请按它自己的文档放目录，也没有实测。
 
@@ -194,7 +205,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | `chat/` | 网页 Chat 版：[读图提示词](chat/read-prompt.md)、[生图提示词](chat/image-prompt.md)、[使用说明](chat/guide.md)；读图提示词由手册浓缩，手册更新时人工同步 |
 | `examples/two-bed/` | 主示例：输入、方案、全部产物和 SHA256SUMS |
 | `tests/fixtures/` | 旧格式兼容回归用的样例 |
-| `scripts/selftest.sh` | 离线自测：只复制 Skill 和示例输入到临时目录跑一遍，不联网、不装依赖 |
+| `scripts/selftest.sh` | 隔离自测：复制 Skill 和示例到临时目录；有 uv 时另跑 Python 3.14 帮助检查，可能下载解释器与依赖；无 uv 时明确跳过 |
 | `scripts/package-skill.py` | 生成 claude.ai 用的 zip；有手册源时先把手册同步进 `references/` |
 | `VERSION` / `CHANGELOG.md` | v1.1.0 版本号与变更清单 |
 | `skill/see-your-home/scripts/gen_prompt.py` | 按相机和门窗自动填生图提示词 |
@@ -203,7 +214,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | `scripts/regression-g1.py` | 提示词、结构漂移、色差离线回归 |
 | `evidence/generation/` | 三批实验的记录、全文提示词、输入、AI 产图、散列与研究打分脚本 |
 
-自测：`bash scripts/selftest.sh`，可以用 `PYTHON=/path/to/python` 指定装了 Pillow 的解释器。
+自测：`bash scripts/selftest.sh`，可以用 `PYTHON=/path/to/python` 指定装了 Pillow 和 NumPy 的解释器；uv 缓存可用 `UV_CACHE_DIR` 指定（默认仓库 `.cache/uv`）。
 
 ### 已知局限
 

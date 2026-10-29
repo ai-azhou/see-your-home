@@ -9,8 +9,22 @@ import argparse
 import json
 import math
 from pathlib import Path
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+except ModuleNotFoundError as error:
+    if error.name != 'numpy':
+        raise
+    import sys
+    print('需要 NumPy。用途是计算结构边缘和门窗的吻合分数。装好后再试；Skill 不会自己安装', file=sys.stderr)
+    raise SystemExit(2) from None
+try:
+    from PIL import Image
+except ModuleNotFoundError as error:
+    if error.name != 'PIL':
+        raise
+    import sys
+    print('需要 Pillow。用途是读取图片和输出检查三联图。装好后再试；Skill 不会自己安装', file=sys.stderr)
+    raise SystemExit(2) from None
 
 W, H, TOL = 960, 540, 4
 
