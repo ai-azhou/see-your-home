@@ -8,6 +8,14 @@
 
 Give your Agent a floor-plan drawing and it reads the structure of the home, then hands back a white model you can orbit and a few white-model images. Use it to check your own ideas and talk with a designer. It is not a construction drawing.
 
+**Three ways to start:**
+
+- **You have an Agent** that runs code on your machine (Claude Code, Codex): install this Skill. It reads the drawing, validates its own work, renders a white model and images, tries renovations and can make mood images. See *Install* and *Use* below.
+- **You only have a web chat** (browser or mobile app): no install. Use the prompts in [`chat/`](chat/guide.md) (Chinese): the chat reads the drawing into a plan, and you check it and view 3D in the offline tool try-your-home. With browsing, one sentence starts it: “Please first read https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md and follow it for my uploaded floor plan; if it fails, read https://raw.giteeusercontent.com/gevoll/see-your-home/main/chat/read-prompt.md ”. Without browsing, paste the prompt or attach it as a file.
+- **You want to draw by hand**: use [try-your-home](https://github.com/ai-azhou/try-your-home), a double-click offline web page ([guide](https://github.com/ai-azhou/try-your-home/blob/main/docs/USAGE.md)).
+
+Flow: read → check (overlay, 3–5 questions) → 3D → renovate → mood image → renovation PDF (exported from try-your-home). Each reply starts with a route map (first time) and ends with “what you can do next”.
+
 Source available, free for noncommercial use. [中文](README.md)
 
 | Your drawing | Structure read by the Agent, overlaid for checking |
@@ -31,7 +39,7 @@ The example is a fictional two-bedroom flat; all outputs are in [examples/](exam
 
 ## Install
 
-Needs Node.js 20+, plus Python 3 with Pillow for overlays. Nothing is installed automatically.
+Needs Node.js 20+, plus Python 3 with Pillow for overlays (and NumPy for scoring mood images). Nothing is installed automatically.
 
 Get the repository with `git clone https://github.com/ai-azhou/see-your-home.git` (or Code → Download ZIP on [GitHub](https://github.com/ai-azhou/see-your-home)), then copy `skill/see-your-home/` to `~/.claude/skills/` (Claude Code, [docs](https://code.claude.com/docs/en/skills)) or `~/.agents/skills/` (Codex, [docs](https://learn.chatgpt.com/docs/build-skills)); project-level folders are `.claude/skills/` and `.agents/skills/`. For claude.ai, run `python3 scripts/package-skill.py` and upload `dist/see-your-home-skill.zip` under Customize → Skills with code execution on ([guide](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills)).
 
@@ -41,7 +49,13 @@ Not tested yet: whether the claude.ai cloud environment can run Node 20 and Pill
 
 > Use see-your-home to read this floor plan, check its scale and structure, give me the white model and images, and list what I need to confirm.
 
-Then, for example: “Show me the bay window in the master bedroom”, or “Give me depth and line images of the living room for image generation.”
+Start a new Agent session in a folder that holds the drawing after installing. Then, for example: “Show me the bay window in the master bedroom”, “Remove this wall and show me the result”, or “Make a mood image of the living room in light oak and cream”.
+
+To edit by hand, download `try-your-home.html` (“Download raw file” on its [GitHub file page](https://github.com/ai-azhou/try-your-home/blob/main/try-your-home.html)), open `交付/方案.json` in it, export the plan JSON when done and tell the Agent “I'm done” with the file location. “Hand to Agent / 交给 Agent” text from the tool can be pasted straight back to the Agent.
+
+## Mood images (v1.1, optional)
+
+The Agent hands the white-model render to an image model of your choice, after telling you that the images go to that service. Recipe: white model + depth + line drawing first; if the automatic structure check fails, white model only; at most two retries, then a human looks. It is an impression only; dimensions follow the plan and elevations. A style photo sets the mood only; colours tend to be exaggerated. Only this standard tier ships; masked or local open-model “structure-locked” generation is not validated. Experiment records: [evidence/generation/](evidence/generation/README.md).
 
 ## What it is not
 
@@ -53,7 +67,7 @@ The bundled scripts only read and write local files: no network, uploads or tele
 
 ## Developers
 
-Commands, the v3 plan format (millimetres), cameras and render passes are documented in [README.md](README.md#给开发者) and in `skill/see-your-home/references/`, the Agent manual (Chinese), which is synced from the companion tool by `scripts/package-skill.py`. Run `bash scripts/selftest.sh` for an isolated offline check. The tool viewer will be released separately later.
+Commands, the v3 plan format (millimetres), cameras and render passes are documented in [README.md](README.md#给开发者) and in `skill/see-your-home/references/`, the Agent manual (Chinese), which is synced from the companion tool by `scripts/package-skill.py`. Run `bash scripts/selftest.sh` for an isolated offline check. The companion tool is [try-your-home](https://github.com/ai-azhou/try-your-home).
 
 ## License
 

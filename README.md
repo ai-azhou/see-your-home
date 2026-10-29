@@ -6,9 +6,48 @@
 
 # see-your-home · 看见你的家
 
-给 Agent 一张户型图，它帮你读出家的结构，交回一个能转着看的白模和几张白模图。用来自己确认想法、和设计师沟通，不是施工图。
+给 AI 一张户型图，它帮你读出家的结构，交回一个能转着看的白模和几张白模图；还可以试拆墙、看装好大概什么感觉。用来自己确认想法、和设计师沟通，不是施工图。
+
+**三种用法，选一种开始：**
+
+- **有 Agent**（Claude Code、Codex 这类能在你电脑上跑程序的 AI）：装这个 Skill。它读图、自己校验、出 3D 白模和白模图，还能试改造、出效果示意图。照下面「[Agent 版：从零走一遍](#agent-版从零走一遍)」做。
+- **只有网页 Chat**（网页版或手机 App）：不用装东西。用 `chat/` 里的提示词让 Chat 读图，再把方案粘进「改改你的家」核对、看 3D。Chat 能联网时发一句话就能启动，不能联网就整段粘贴或当附件上传。照「[网页 Chat 使用说明](chat/guide.md)」做。
+- **想直接手动画**：用 [try-your-home · 改改你的家](https://github.com/ai-azhou/try-your-home)，一个双击就能打开的离线网页，导入户型图当底图自己描墙、试改造、出改造清单 PDF（[用法](https://github.com/ai-azhou/try-your-home/blob/main/docs/USAGE.md)）。
 
 源码公开，非商业免费使用。[English](README.en.md)
+
+## 全流程
+
+| 步骤 | 在哪做 | Agent 版 | 网页 Chat 版 |
+| --- | --- | --- | --- |
+| 1 读图 | Agent / Chat | 说一句话，Agent 定比例、读结构，写成 `方案.json` | 一句话启动或粘贴[读图提示词](chat/read-prompt.md)，Chat 给出一大段方案代码 |
+| 2 核对 | Agent；工具 | Agent 自己校验、出叠图，问你 3–5 个图上读不出来的问题 | 在「改改你的家」点「粘贴方案」看叠图、校验；对不上点「复制问题给 Chat」贴回去 |
+| 3 3D | Agent；工具 | Agent 出 `白模.glb`、斜视俯视和房间平视的白模图 | 在工具里切到 3D 转着看 |
+| 4 改造 | Agent；工具 | 说「把这面墙拆掉看看」；或在工具里改完交回给 Agent | 在工具里选中墙或门窗点「交给 Agent」，把复制的文字贴给 Chat |
+| 5 看感觉 | 生图服务 | Agent 出素材、写提示词、自动打分，不过就换输入重出（第 9 步） | 工具「导出图片」导出白模图，配[生图提示词](chat/image-prompt.md)发给能生成图片的 Chat |
+| 6 导出清单 | 工具 | 用工具打开 `交付/方案.json`，「导出」→「改造清单 PDF」 | 同左 |
+
+两条路的每一次回复都会先讲路线（第一次），末尾给「下一步你可以」，照着选就能往下走。
+
+## 网页 Chat 版：两种启动方式
+
+先新开一个对话，上传户型图，然后二选一：
+
+- **Chat 能联网读网页**：同一条消息里发这一句：
+
+  ```text
+  请先读取 https://raw.githubusercontent.com/ai-azhou/see-your-home/main/chat/read-prompt.md ，按里面的说明处理我上传的户型图；打不开就读 https://raw.giteeusercontent.com/gevoll/see-your-home/main/chat/read-prompt.md
+  ```
+
+- **Chat 不能联网**：打开[读图提示词](chat/read-prompt.md)，点「Copy raw file」整段复制粘进对话框；粘不下（约 2 万字，有的 Chat 单条消息有长度上限）就点「Download raw file」把它当附件上传，再发一句「按附件里的说明处理这张户型图」。
+
+网页 Chat 没有沙盒，跑不了程序，所以校验、叠图和 3D 都靠「改改你的家」。三份文件：
+
+| 文件 | 给谁 | 用途 |
+| --- | --- | --- |
+| [网页 Chat 使用说明](chat/guide.md)（`chat/guide.md`） | 你 | 从读图到改造、生图、导出清单，一步步怎么做 |
+| [读图提示词](chat/read-prompt.md)（`chat/read-prompt.md`） | Chat | 读图规矩和方案格式，第 1 步用 |
+| [生图提示词](chat/image-prompt.md)（`chat/image-prompt.md`） | 生图的 Chat | 两个模板，想看装好的感觉时用 |
 
 | 你给的户型图 | Agent 读出的结构，叠回原图核对 |
 | --- | --- |
@@ -32,17 +71,26 @@
 - **白模图**：斜视、俯视剖切，以及你想看的房间平视。
 - **要你确认的问题**：图上读不出来、又会改动结构的地方，第一轮一般 3–5 个。
 - 想试改造（拆墙、开洞）的，另出改造后的模型和图；拆承重墙、外墙之前 Agent 会先问你。
-- 想自己拿去生图的，同一个机位还能出深度图、线稿、分割图和每扇门窗的遮罩。
+- 想看装好大概什么感觉的，另出效果示意图（v1.1）；想自己拿去生图的，同一个机位还能出深度图、线稿、分割图和每扇门窗的遮罩。
+- 每次交付末尾有「下一步你可以」，包括怎么用「改改你的家」自己动手、改完怎么交回。
 
-## 怎么用
+## Agent 版：从零走一遍
 
-### 1. 装上
+### 1. 准备环境
 
-需要 Node.js 20 以上；叠图要 Python 3 和 Pillow。NumPy 是 `extract_drawing.py` 需要的可选运行依赖，不随附；不使用提取脚本时无需它。Skill 不会自己装这些，缺什么 Agent 会先告诉你用途，你同意再装。
+需要 Node.js 20 以上；叠图要 Python 3 和 Pillow；生图后的自动打分另要 NumPy（不出效果图可以不装）。Skill 不会自己装这些：缺什么，Agent 会先告诉你用途，你同意才装。
 
-先把仓库下载到本机：`git clone https://github.com/ai-azhou/see-your-home.git`；不用 git 的话，在 [GitHub 页面](https://github.com/ai-azhou/see-your-home) 点 Code → Download ZIP。
+### 2. 装上 Skill
 
-然后把仓库里的 `skill/see-your-home/` 整个文件夹复制到下面的位置：
+把仓库下载到本机，再把 `skill/see-your-home/` 整个文件夹复制到 Agent 的 Skill 目录。Claude Code 只给自己用，在终端运行：
+
+```sh
+git clone https://github.com/ai-azhou/see-your-home.git
+mkdir -p ~/.claude/skills
+cp -R see-your-home/skill/see-your-home ~/.claude/skills/
+```
+
+不用 git 的话，在 [GitHub 页面](https://github.com/ai-azhou/see-your-home) 点 Code → Download ZIP，解压后照样复制。GitHub 打不开可以用 Gitee 镜像 https://gitee.com/gevoll/see-your-home 。
 
 | 在哪用 | 只给自己用 | 只给某个项目用 | 依据 |
 | --- | --- | --- | --- |
@@ -50,25 +98,52 @@
 | Codex | `~/.agents/skills/see-your-home/` | 项目里的 `.agents/skills/see-your-home/` | [OpenAI Build skills 文档](https://learn.chatgpt.com/docs/build-skills) |
 | claude.ai | 在 Customize → Skills 上传 zip，并打开代码执行 | — | [Anthropic 上传说明](https://support.claude.com/en/articles/12512198-how-to-create-custom-skills) |
 
-claude.ai 用的 zip 在仓库根目录运行 `python3 scripts/package-skill.py` 生成，产物是 `dist/see-your-home-skill.zip`，顶层是 `see-your-home/` 文件夹。
+装好以后**新开一个 Agent 会话**，Skill 才会被认出来。claude.ai 用的 zip 在仓库根目录运行 `python3 scripts/package-skill.py` 生成，产物是 `dist/see-your-home-skill.zip`，顶层是 `see-your-home/` 文件夹。
 
 **还没实测的**：claude.ai 云端环境能不能跑 Node 20 和 Pillow，我们没有上传试过。其他支持 Skill 的 Agent，请按它自己的文档放目录，也没有实测。
 
-### 2. 说一句话
+### 3. 说一句话
 
-把户型图发给 Agent，然后说：
+建一个文件夹，把户型图放进去（比如 `我的户型/户型图.png`），在这个文件夹里新开 Agent 会话（Claude Code 就是在终端 `cd 我的户型`，再运行 `claude`），然后说：
 
-> 用 see-your-home 读这张户型图，核对比例和结构，给我白模和几张白模图，再列出要我确认的问题。
+> 用 see-your-home 读户型图.png，核对比例和结构，给我白模和几张白模图，再列出要我确认的问题。
 
-之后可以接着说：
+接下来会这样：
+
+1. Agent 先用几句话说这是什么图、打算怎么读，给出**路线图**：它会做哪几步、你随时可以选什么（只要结构、要 3D 图、试拆墙、看装好的感觉、出改造清单）。同时查你电脑上有没有 Node 和 Pillow，缺了先问你。
+2. 它读图、校验、出叠图，改到对为止，再出白模和白模图。一次渲染可能要几十秒。
+3. 东西都放在 `我的户型/交付/` 里：`交付说明.md` 一屏讲清拿到了什么、怎么打开、要你确认的 3–5 个问题；还有 `方案.json`、`叠图.png`、`白模.glb`、`白模图/`、`房间平视/`。
+4. 说明最后是「**下一步你可以**」，照着选。
+
+### 4. 接着说
+
+> 次卧和客厅之间那面是承重墙，层高 2.75 米。（回答问题，Agent 改方案、重出图）
 
 > 我想看主卧飘窗那边。
 
-> 把次卧和客厅之间这面墙拆掉，看看改完的样子。
+> 把次卧和客厅之间这面墙拆掉，看看改完的样子。（承重墙、外墙、承重不明的墙，Agent 会先问你一次）
 
-> 给我客厅这个角度的深度图和线稿，我自己拿去生图。
+> 给客厅出一张奶油原木风的效果示意图。（也可以发一张你喜欢的室内照片；见下面「效果示意图」）
 
-Agent 会先告诉你它打算怎么读、大概会问什么；最后的说明一屏以内，写清拿到了什么、怎么打开、要你确认哪几件事。
+### 5. 想自己动手
+
+下载「改改你的家」：在 GitHub 打开 [try-your-home.html 的文件页](https://github.com/ai-azhou/try-your-home/blob/main/try-your-home.html)，点「Download raw file」，双击打开，不联网、不用装。把 `交付/方案.json` 拖进去，就能看叠图和 3D、拖墙试改造、试装修，顶栏「导出」出改造清单 PDF。完整用法见 [USAGE.md](https://github.com/ai-azhou/try-your-home/blob/main/docs/USAGE.md)。
+
+- 改完在「导出」里存一份方案文件 JSON，回来跟 Agent 说「我改好了」，告诉它文件在哪，它重新校验、重新出图。
+- 在工具里选中墙或门窗，点「交给 Agent」写一句话，把复制的文字贴给 Agent，它照你说的改。
+- 你本机有 try-your-home 的仓库、装了 Node，可以让 Agent 开本地服务模式：它改文件，页面自动刷新。
+
+## 效果示意图（v1.1，可选）
+
+想看「装好大概什么感觉」，Agent 会把白模图交给一个能生成图片的模型，换上材质、颜色和光，结构尽量不动：
+
+- 先问你要什么感觉（用自己的话说材料和颜色，或发一张喜欢的室内照片），并说清图会发给生图服务、发不发由你定。Agent 自己没法出图时，它把图片和提示词准备好，你拿去生图，再把结果交回给它检查。
+- 先给模型白模、深度、线稿三张图；自动检查发现墙窗跑位，就退到只给白模一张再试；最多重试 2 次，还不过就交给你看。不同模型适合的输入不一样，这个顺序对哪类模型都适用。
+- 自动检查看的是墙角线和门窗框线有没有对上；窗被画成柜门、加了窗帘这类，它会再自己看一遍，也请你对着白模图看一眼。
+- 出来的是**效果示意，尺寸以平面和立面为准**。照片只取氛围，颜色常被放大，具体颜色以你说的材料为准。
+- 只有这一档（普通档）。用遮罩、本地开源模型锁住门窗的「保结构档」还没验证。
+
+这套做法来自三批实验，提示词全文、输入、产图和分数都公开在 [evidence/generation/](evidence/generation/README.md)。每种组合只有两张图，只能看方向。网页 Chat 版用 [生图提示词](chat/image-prompt.md)，没有自动检查。
 
 ## 它不是什么
 
@@ -81,7 +156,7 @@ Agent 会先告诉你它打算怎么读、大概会问什么；最后的说明�
 
 随附的脚本只读写你电脑上的文件，不联网、不上传、不收集使用数据。
 
-但户型图发给云端 Agent（包括 claude.ai）时，图片本身会交给那个服务处理，这一步不是离线的，用不用由你决定。Skill 不会再把图转给任何其他服务。
+但户型图发给云端 Agent（包括 claude.ai）时，图片本身会交给那个服务处理，这一步不是离线的，用不用由你决定。Skill 不会再把图转给任何其他服务。出效果示意图时，白模图（和你给的风格照片）要发给生图服务，Agent 会先问你；户型原图不发。网页 Chat 版：户型图会发给你用的那个 Chat 服务，见[使用说明的隐私一节](chat/guide.md#隐私)。
 
 ## 给开发者
 
@@ -105,7 +180,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 
 ### 格式
 
-- Skill 的 `references/` 是写给 Agent 的手册：[格式](skill/see-your-home/references/格式.md)、[读图](skill/see-your-home/references/读图.md)、[改造](skill/see-your-home/references/改造.md)、[命令](skill/see-your-home/references/命令.md)、[相机与素材通道](skill/see-your-home/references/相机与素材通道.md)、[交付](skill/see-your-home/references/交付.md)。这些文件由打包脚本从配套工具的手册同步过来，不在这里手改。
+- Skill 的 `references/` 是写给 Agent 的手册：[格式](skill/see-your-home/references/格式.md)、[读图](skill/see-your-home/references/读图.md)、[改造](skill/see-your-home/references/改造.md)、[工具连接](skill/see-your-home/references/工具连接.md)、[命令](skill/see-your-home/references/命令.md)、[相机与素材通道](skill/see-your-home/references/相机与素材通道.md)、[交付](skill/see-your-home/references/交付.md)、[生图](skill/see-your-home/references/生图.md)。这些文件由打包脚本从配套工具的手册同步过来，不在这里手改。
 - 方案 JSON 是 v3，长度一律毫米，面积平方米：字段见[格式](skill/see-your-home/references/格式.md)，机器校验用 [plan.schema.json](skill/see-your-home/references/plan.schema.json)。
 - 相机、坐标系和素材通道（16 位深度、ADE20K 色板分割、门窗实例遮罩）：[相机与素材通道.md](skill/see-your-home/references/相机与素材通道.md)。
 - GLB 用米，Y 轴朝上；按构件类型合并成网格，构件 ID 记在节点名和 primitive 的 extras 里。普通查看器一般按类型整组选中，不能逐面墙单独选。玻璃是半透明材质。
@@ -116,6 +191,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | 路径 | 内容 |
 | --- | --- |
 | `skill/see-your-home/` | 要安装的 Skill：SKILL.md、references、scripts（打包好的 CLI、叠图脚本、离线 glTF 校验器） |
+| `chat/` | 网页 Chat 版：[读图提示词](chat/read-prompt.md)、[生图提示词](chat/image-prompt.md)、[使用说明](chat/guide.md)；读图提示词由手册浓缩，手册更新时人工同步 |
 | `examples/two-bed/` | 主示例：输入、方案、全部产物和 SHA256SUMS |
 | `tests/fixtures/` | 旧格式兼容回归用的样例 |
 | `scripts/selftest.sh` | 离线自测：只复制 Skill 和示例输入到临时目录跑一遍，不联网、不装依赖 |
@@ -136,7 +212,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 - 方向名按图纸坐标，不按 `north` 旋转。
 - 房间平视的自动选位是打分挑出来的，不保证每间都好看；拍不好的会在说明里写明。
 
-配套的户型工具查看器后续单独发布。
+配套的户型工具「改改你的家」：https://github.com/ai-azhou/try-your-home 。
 
 ## 许可
 

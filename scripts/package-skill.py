@@ -12,8 +12,9 @@ import re
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 
-# Chapters that ship with the Skill (1 格式, 2 读图, 3 改造, 5 命令 + 附篇, 6 交付). 4 工具连接 and 7 装修 do not.
-MANUAL_FILES = ['格式.md', '读图.md', '改造.md', '命令.md', '相机与素材通道.md', '交付.md']
+# Chapters that ship with the Skill (1 格式, 2 读图, 3 改造, 4 工具连接, 5 命令 + 附篇, 6 交付, 8 生图).
+# 7 装修 is still a placeholder and does not ship; shipped chapters must not link to it.
+MANUAL_FILES = ['格式.md', '读图.md', '改造.md', '工具连接.md', '命令.md', '相机与素材通道.md', '交付.md', '生图.md']
 # Older references whose content now lives in the manual; removed so there is only one version.
 SUPERSEDED = ['制图惯例.md', '比例.md', '问题卡.md']
 HEADER = '<!-- 来源：app/docs/agent手册/{name}，勿手改；改手册后重新打包 -->\n'
@@ -40,7 +41,7 @@ if manual:
 else:
     print('Manual source not found; zipping the committed references as they are')
 
-# Links inside shipped chapters may only point at other shipped chapters or the schema.
+# Links inside shipped chapters may only point at other shipped chapters or the schema (so never at 装修.md).
 allowed = set(MANUAL_FILES) | {'plan.schema.json'}
 for name in MANUAL_FILES:
     text = (references / name).read_text(encoding='utf-8')
