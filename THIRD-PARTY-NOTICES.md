@@ -308,3 +308,13 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Logo 字体 / Logo lettering
+
+`assets/logo/` 中的 logo 属于图片，与文档一样采用 [CC BY-NC-SA 4.0](LICENSE-docs.md)。
+横版组合里的文字由 Manrope（OFL-1.1，字重 650）、思源黑体 Source Han Sans SC（OFL-1.1，Medium / 500）转曲，成品 SVG 无需加载字体。
+
+- Manrope：Copyright 2019 The Manrope Project Authors；[OFL 原文及版权声明](https://github.com/google/fonts/blob/main/ofl/manrope/OFL.txt)。
+- 思源黑体：Copyright 2014–2025 Adobe；[OFL 原文及版权声明](https://github.com/adobe-fonts/source-han-sans/blob/release/LICENSE.txt)。
+
+字体本身仍遵循各自的 OFL-1.1 许可；仓库仅发布转曲后的 logo 图片，不分发字体文件。

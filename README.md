@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/see-lockup-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo/see-lockup-light.svg">
+  <img src="assets/logo/see-lockup-light.svg" alt="看见你的家 · see-your-home" width="360">
+</picture>
+
 # see-your-home · 看见你的家
 
 给 Agent 一张户型图，它帮你读出家的结构，交回一个能转着看的白模和几张白模图。用来自己确认想法、和设计师沟通，不是施工图。

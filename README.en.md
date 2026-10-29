@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo/see-lockup-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/logo/see-lockup-light.svg">
+  <img src="assets/logo/see-lockup-light.svg" alt="see-your-home · 看见你的家" width="360">
+</picture>
+
 # see-your-home
 
 Give your Agent a floor-plan drawing and it reads the structure of the home, then hands back a white model you can orbit and a few white-model images. Use it to check your own ideas and talk with a designer. It is not a construction drawing.
