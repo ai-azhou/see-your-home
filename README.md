@@ -11,7 +11,7 @@
 **三种用法，选一种开始：**
 
 - **有 Agent**（Claude Code、Codex 这类能在你电脑上跑程序的 AI）：装这个 Skill。它读图、自己校验、出 3D 白模和白模图，还能试改造、出效果示意图。照下面「[Agent 版：从零走一遍](#agent-版从零走一遍)」做。
-- **只有网页 Chat**（网页版或手机 App）：不用装东西。用 `chat/` 里的提示词让 Chat 读图，再把方案粘进「改改你的家」核对、看 3D。Chat 能联网时发一句话就能启动，不能联网就整段粘贴或当附件上传。照「[网页 Chat 使用说明](chat/guide.md)」做。
+- **只有网页 Chat**（网页版或手机 App）：不用装东西。用 `chat/` 里的提示词让 Chat 读图，再把方案粘进「改改你的家」核对、看 3D。Chat 能联网时发一句话就能启动，不能联网就整段粘贴或当附件上传。照「[网页 Chat 使用说明](chat/guide.md)」做。网页 Chat 没有沙盒、跑不了校验，读出的结构可能不准；有 Agent 软件的，优先用上面的 Agent 版。
 - **想直接手动画**：用 [try-your-home · 改改你的家](https://github.com/ai-azhou/try-your-home)，一个双击就能打开的离线网页，导入户型图当底图自己描墙、试改造、出改造清单 PDF（[用法](https://github.com/ai-azhou/try-your-home/blob/main/docs/USAGE.md)）。
 
 源码公开，非商业免费使用。[English](README.en.md)
@@ -217,7 +217,7 @@ node scripts/plan-cli.mjs schema                      # 在当前目录写出 sc
 | `tests/fixtures/` | 旧格式兼容回归用的样例 |
 | `scripts/selftest.sh` | 隔离自测：复制 Skill 和示例到临时目录；有 uv 时另跑 Python 3.14 帮助检查，可能下载解释器与依赖；无 uv 时明确跳过 |
 | `scripts/package-skill.py` | 生成 claude.ai 用的 zip；有手册源时先把手册同步进 `references/` |
-| `VERSION` / `CHANGELOG.md` | v1.1.2 版本号与变更清单 |
+| `VERSION` / `CHANGELOG.md` | v1.1.3 版本号与变更清单 |
 | `skill/see-your-home/scripts/gen_prompt.py` | 按相机和门窗自动填生图提示词 |
 | `skill/see-your-home/scripts/gen_score.py` | 离线结构、门窗与可选风格色差检查（NumPy + Pillow） |
 | `skill/see-your-home/assets/prompts/` | 结构参考、风格照片两份通用模板 |
