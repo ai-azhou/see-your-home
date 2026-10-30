@@ -29,6 +29,7 @@ fi
 PYTHON="$py" node "$repo/scripts/regression-o5.mjs" "$work/skill"
 node "$repo/scripts/regression-o7.mjs" "$work/skill"
 PYTHONDONTWRITEBYTECODE=1 "$py" "$repo/scripts/regression-o8.py" "$work/skill"
+PYTHONDONTWRITEBYTECODE=1 "$py" "$repo/scripts/regression-rectify.py" "$work/skill"
 cp "$repo/examples/two-bed/input.png" "$repo/examples/two-bed/plan.json" "$work/"
 cd "$work"
 node skill/scripts/plan-cli.mjs validate plan.json > validate.json
