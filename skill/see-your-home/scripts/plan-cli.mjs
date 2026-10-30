@@ -1,4 +1,4 @@
-// Shared core base git commit: 3bc539c80193d897762a7165855c790d0771b782; no uncommitted core changes.
+// Shared core base git commit: 83a238578810e5b7f108cd9bf4c7a03ff89d8da3; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -14950,6 +14950,21 @@ function meshToGlb(groups) {
 function exportGlb(plan, options = {}) {
 	return meshToGlb(buildMesh(plan, options));
 }
+// src/core/merge-rooms.ts
+var ring = (poly) => [poly];
+/**
+* 房间贴着这面墙的那段（沿墙 mm）：墙带和房间多边形求交，再取沿墙范围。
+* 不能靠房间顶点：房间比墙长时，顶点都在墙端以外，投影过去离墙很远。
+*/
+function roomSpanOnWall(w, poly) {
+	const hit = index.intersection(ring(wallFootprint({
+		...w,
+		thickness: w.thickness + 120
+	})), ring(poly)).flat(2);
+	if (!hit.length) return null;
+	const s = hit.map((p) => projectToWall(w, p).s);
+	return [Math.min(...s), Math.max(...s)];
+}
 // src/core/decor/solids.ts
 /** A complete structural scene, with real recesses subtracted; buildSolids stays untouched. */
 function decorWallSolids(plan, decor = plan.decor) {
@@ -15516,6 +15531,10 @@ function roomCamera(plan, room, wallId, obstacles = []) {
 			const b = room.poly[(i + 1) % room.poly.length], pa = projectToWall(w, a), pb = projectToWall(w, b);
 			return pa.dist <= w.thickness / 2 + 60 && pb.dist <= w.thickness / 2 + 60 ? [[Math.min(pa.s, pb.s), Math.max(pa.s, pb.s)]] : [];
 		});
+		if (!spans.length) {
+			const span = roomSpanOnWall(w, room.poly);
+			if (span) spans = [span];
+		}
 		for (const o of plan.openings.filter((o) => o.wall === w.id)) spans = spans.flatMap(([a, b]) => [[a, Math.min(b, o.offset)], [Math.max(a, o.offset + o.width), b]].filter(([p, q]) => q > p));
 		focusWalls.set(w.id, Math.max(0, ...spans.map(([a, b]) => b - a)));
 	}
@@ -15530,7 +15549,10 @@ function roomCamera(plan, room, wallId, obstacles = []) {
 	const aimAt = (w) => {
 		const edges = room.poly.map((a, i) => [a, room.poly[(i + 1) % room.poly.length]]).filter((e) => e.every((p) => projectToWall(w, p).dist <= w.thickness / 2 + 60));
 		const total = edges.reduce((s, [a, b]) => s + dist2(a, b), 0);
-		return total ? edges.reduce((m, [a, b]) => [m[0] + (a[0] + b[0]) / 2 * dist2(a, b) / total, m[1] + (a[1] + b[1]) / 2 * dist2(a, b) / total], [0, 0]) : projectToWall(w, labelPoint(room.poly)).point;
+		return total ? edges.reduce((m, [a, b]) => [m[0] + (a[0] + b[0]) / 2 * dist2(a, b) / total, m[1] + (a[1] + b[1]) / 2 * dist2(a, b) / total], [0, 0]) : (() => {
+			const span = roomSpanOnWall(w, room.poly);
+			return span ? pointAt(w, (span[0] + span[1]) / 2) : projectToWall(w, labelPoint(room.poly)).point;
+		})();
 	};
 	const glazing = (w) => plan.openings.filter((o) => o.wall === w.id && o.kind !== "door" && o.kind !== "doorway").reduce((s, o) => s + o.width, 0);
 	const lightWall = walls.filter((w) => Object.values(roomsBesideWall(plan, w.id)).flat().some((r) => r.id === room.id)).sort((a, b) => glazing(b) - glazing(a))[0];

@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "3bc539c80193d897762a7165855c790d0771b782",
+  "coreCommit": "83a238578810e5b7f108cd9bf4c7a03ff89d8da3",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -389,11 +389,14 @@
     "src/core/glb.ts": {
       "renderedLength": 3886
     },
+    "src/core/merge-rooms.ts": {
+      "renderedLength": 417
+    },
     "src/core/decor/solids.ts": {
       "renderedLength": 7259
     },
     "src/core/raster.ts": {
-      "renderedLength": 56814
+      "renderedLength": 57034
     },
     "src/core/summary.ts": {
       "renderedLength": 3456
@@ -795,11 +798,14 @@
         "src/core/glb.ts": {
           "renderedLength": 3886
         },
+        "src/core/merge-rooms.ts": {
+          "renderedLength": 417
+        },
         "src/core/decor/solids.ts": {
           "renderedLength": 7259
         },
         "src/core/raster.ts": {
-          "renderedLength": 56814
+          "renderedLength": 57034
         },
         "src/core/summary.ts": {
           "renderedLength": 3456
