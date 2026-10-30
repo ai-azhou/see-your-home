@@ -61,6 +61,11 @@
       "counted": true
     }
   ],
+  "questions": {
+    "open": 3,
+    "answered": 0,
+    "resolved": 1
+  },
   "unansweredQuestions": 3,
   "pendingChanges": 1
 }

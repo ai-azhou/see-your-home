@@ -3,7 +3,7 @@
 用法：python overlay.py 原图 方案.json 输出.png [--font 中文字体路径] [--scale 倍数] [--labels "客餐厅=29.0,主卧=12.3"]
 
 画面：墙按类型半透明上色，门窗是墙上的粗线段，房间是虚线轮廓；图内用编号小圆点，名称与数值在图外图例栏，
-柱是实心块，管道井是斜线块，楼梯是踏步线加上行箭头，挑空是虚线框加交叉线，未答问题是红框，已答问题是灰色虚线框。
+柱是实心块，管道井是斜线块，楼梯是踏步线加上行箭头，挑空是虚线框加交叉线，未答问题是红框，已答等处理是橙色虚线框，已处理是灰色虚线框。
 有 levelUnderlays 时，每层用自己的比例和原点画在同一张原图上，并在该层左上角标层名。
 终端打印每个房间的计算面积，方便和图上标注对照；问题框过大时警告。
 """
@@ -36,16 +36,33 @@ STAIR_COLOR = (0, 110, 160)
 VOID_COLOR = (90, 90, 90)
 ROOM_COLOR = (60, 40, 120)
 Q_COLOR = (230, 0, 0)
-ANSWERED_COLOR = (110, 110, 110)
+ANSWERED_COLOR = (205, 105, 0)
+RESOLVED_COLOR = (110, 110, 110)
 INFERRED_ANSWERS = ('不确定', '不知道', '不清楚', '按最可能', '最可能的', '按图上最可能', '按图推断', '你看着办')
 
 
+def question_state(q):
+    """和工具 core 的 questionStatus 一致：有合法 status 用它，没有就按答复和回复推。"""
+    if q.get('status') in ('open', 'answered', 'resolved'):
+        return q['status']
+    reply = q.get('reply') or {}
+    if not str(q.get('answer') or '').strip():
+        return 'open'
+    if not reply:
+        return 'answered'
+    return 'open' if reply.get('outcome') == 'ask' else 'resolved'
+
+
 def question_style(q):
-    answer = str(q.get('answer') or '').strip()
-    if not answer:
-        return '未答', Q_COLOR, False
-    inferred = any(word in answer for word in INFERRED_ANSWERS)
-    return '已答，仍是推断' if inferred else '已答', ANSWERED_COLOR, True
+    """返回（图例文字, 颜色, 是否虚线）。未答红框，已答等处理橙色虚线，已处理灰色虚线。"""
+    state, reply = question_state(q), q.get('reply') or {}
+    if state == 'open':
+        return ('追问中' if reply.get('outcome') == 'ask' else '未答'), Q_COLOR, False
+    if state == 'answered':
+        inferred = any(word in str(q.get('answer') or '') for word in INFERRED_ANSWERS)
+        return '已答，仍是推断' if inferred else '已答，等处理', ANSWERED_COLOR, True
+    label = {'inferred': '已处理，仍是推断', 'withdrawn': '已撤回'}.get(reply.get('outcome'), '已处理')
+    return label, RESOLVED_COLOR, True
 
 FONT_CANDIDATES = ['/System/Library/Fonts/Hiragino Sans GB.ttc', '/System/Library/Fonts/PingFang.ttc',
                    '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'C:/Windows/Fonts/msyh.ttc']
@@ -409,7 +426,8 @@ def main():
               ('内墙（类型待核）', WALL_COLORS['partition']), ('玻璃', WALL_COLORS['glass']),
               ('矮墙 / 半墙玻璃', WALL_COLORS['half']), ('柱', COLUMN_COLORS['bearing']),
               ('管道井 / 烟道（斜线块）', SHAFT_COLOR), ('楼梯（踏步与箭头）', STAIR_COLOR),
-              ('挑空（灰虚线交叉）', VOID_COLOR), ('未答（红框 / 红角标）', Q_COLOR), ('已答（灰虚线框 / 角标）', ANSWERED_COLOR)]
+              ('挑空（灰虚线交叉）', VOID_COLOR), ('未答（红框 / 红角标）', Q_COLOR), ('已答等处理（橙虚线框 / 角标）', ANSWERED_COLOR),
+              ('已处理（灰虚线框 / 角标）', RESOLVED_COLOR)]
     panel_w = max(300, round(380*k)); padding = max(12, round(16*k)); row = max(16, round(20*k))
     def wrap(text, limit):
         lines, line = [], ''

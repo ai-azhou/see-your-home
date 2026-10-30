@@ -37,6 +37,20 @@ PYTHONDONTWRITEBYTECODE=1 "$py" skill/scripts/overlay.py input.png plan.json ove
 echo 'overlay: created'
 node skill/scripts/plan-cli.mjs stats plan.json > stats.json
 echo 'stats: created'
+# 问题卡状态（v1.2）：questions 列卡；answer 记用户原话；resolve 写回复；状态不对时拒绝且不写文件
+cp plan.json q.json
+node skill/scripts/plan-cli.mjs questions q.json --status open > q-open.json
+node -e "const q=require('./q-open.json'); if (q.length !== 3 || q.some(x => x.status !== 'open')) throw new Error('questions --status open: ' + q.length)"
+before=$(shasum q.json)
+if node skill/scripts/plan-cli.mjs resolve q.json q-kitchen --outcome changed --reply x 2> q-err.txt; then echo 'resolve on open card should fail' >&2; exit 1; fi
+grep -q '错误：问题卡 q-kitchen' q-err.txt
+test "$before" = "$(shasum q.json)"
+node skill/scripts/plan-cli.mjs answer q.json q-kitchen --text '只是门洞' --at 2026-10-30 > /dev/null
+node skill/scripts/plan-cli.mjs resolve q.json q-kitchen --outcome changed --changed o-k --reply '厨房门改成门洞，不装门。' --at 2026-10-30 > /dev/null
+node skill/scripts/plan-cli.mjs validate q.json > /dev/null
+node -e "const p=require('./q.json'), q=p.questions.find(x => x.id === 'q-kitchen'); if (q.status !== 'resolved' || q.reply.outcome !== 'changed' || q.reply.changed[0] !== 'o-k' || q.answer !== '只是门洞') throw new Error(JSON.stringify(q))"
+node skill/scripts/plan-cli.mjs stats q.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const q=JSON.parse(s).questions; if (q.open !== 2 || q.resolved !== 2 || q.answered !== 0) throw new Error(JSON.stringify(q))})"
+echo 'questions / answer / resolve: PASS'
 node skill/scripts/plan-cli.mjs cameras plan.json --json > cameras.json
 echo 'cameras: created'
 node skill/scripts/plan-cli.mjs export plan.json model.glb

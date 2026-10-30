@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "c35515a0363540cd36148ee3844cb9953239dd60",
+  "coreCommit": "3bc539c80193d897762a7165855c790d0771b782",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -333,7 +333,7 @@
       "renderedLength": 2835
     },
     "schema/plan.schema.json": {
-      "renderedLength": 38628
+      "renderedLength": 39779
     },
     "src/core/schema.ts": {
       "renderedLength": 500
@@ -342,10 +342,10 @@
       "renderedLength": 16090
     },
     "src/core/simple.ts": {
-      "renderedLength": 19695
+      "renderedLength": 19713
     },
     "src/core/io.ts": {
-      "renderedLength": 7026
+      "renderedLength": 7603
     },
     "src/core/decor/surfaces.ts": {
       "renderedLength": 14380
@@ -359,11 +359,14 @@
     "src/core/decor/integration.ts": {
       "renderedLength": 1254
     },
+    "src/core/questions.ts": {
+      "renderedLength": 2220
+    },
     "src/core/validate.ts": {
-      "renderedLength": 11307
+      "renderedLength": 12102
     },
     "src/core/changes.ts": {
-      "renderedLength": 13603
+      "renderedLength": 13723
     },
     "src/core/decor/resolve.ts": {
       "renderedLength": 15389
@@ -393,13 +396,13 @@
       "renderedLength": 56814
     },
     "src/core/summary.ts": {
-      "renderedLength": 3442
+      "renderedLength": 3456
     },
     "schema/generate.ts": {
-      "renderedLength": 88963
+      "renderedLength": 91151
     },
     "scripts/plan.ts": {
-      "renderedLength": 11021
+      "renderedLength": 14935
     }
   },
   "outputs": {
@@ -736,7 +739,7 @@
           "renderedLength": 2835
         },
         "schema/plan.schema.json": {
-          "renderedLength": 38628
+          "renderedLength": 39779
         },
         "src/core/schema.ts": {
           "renderedLength": 500
@@ -745,10 +748,10 @@
           "renderedLength": 16090
         },
         "src/core/simple.ts": {
-          "renderedLength": 19695
+          "renderedLength": 19713
         },
         "src/core/io.ts": {
-          "renderedLength": 7026
+          "renderedLength": 7603
         },
         "src/core/decor/surfaces.ts": {
           "renderedLength": 14380
@@ -762,11 +765,14 @@
         "src/core/decor/integration.ts": {
           "renderedLength": 1254
         },
+        "src/core/questions.ts": {
+          "renderedLength": 2220
+        },
         "src/core/validate.ts": {
-          "renderedLength": 11307
+          "renderedLength": 12102
         },
         "src/core/changes.ts": {
-          "renderedLength": 13603
+          "renderedLength": 13723
         },
         "src/core/decor/resolve.ts": {
           "renderedLength": 15389
@@ -796,18 +802,19 @@
           "renderedLength": 56814
         },
         "src/core/summary.ts": {
-          "renderedLength": 3442
+          "renderedLength": 3456
         },
         "schema/generate.ts": {
-          "renderedLength": 88963
+          "renderedLength": 91151
         },
         "scripts/plan.ts": {
-          "renderedLength": 11021
+          "renderedLength": 14935
         }
       },
       "imports": [
         "node:module",
         "node:fs",
+        "node:crypto",
         "node:path",
         "node:zlib"
       ],

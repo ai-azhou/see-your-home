@@ -1,6 +1,6 @@
 # 虚构两室：主示例与产物
 
-主示例为 [two-bed/](two-bed/)，从虚构的工具导出方案制作。文件 v3、全部长度 mm；装修层已去除，5 条改造和 4 张问题卡保留。底图为原始 1200×1120 PNG，mmPerPx=10、origin=[120,120]，右下角保留「虚构户型 · 仅供演示」。
+主示例为 [two-bed/](two-bed/)，从虚构的工具导出方案制作。文件 v3、全部长度 mm；装修层已去除，5 条改造和 4 张问题卡保留；问题卡 q-bay 用户已答、Agent 已处理（`status: resolved`，带 `reply`，r-bay 记了 `evidence.confirmed`），其余 3 张待回答，叠图上分别是灰虚线框和红框。底图为原始 1200×1120 PNG，mmPerPx=10、origin=[120,120]，右下角保留「虚构户型 · 仅供演示」。
 
 4 条 confirmed 改造参与改造后导出；c5 的承重墙开洞提议保持 pending，`apply.json` 中 needsConfirm=true 是预期结果，未替用户确认。所有渲染为 2400×1600，素材通道与客餐厅白模共用相机。
 

@@ -21,7 +21,7 @@
 | 步骤 | 在哪做 | Agent 版 | 网页 Chat 版 |
 | --- | --- | --- | --- |
 | 1 读图 | Agent / Chat | 说一句话，Agent 定比例、读结构，写成 `方案.json` | 一句话启动或粘贴[读图提示词](chat/read-prompt.md)，Chat 给出一大段方案代码 |
-| 2 核对 | Agent；工具 | Agent 自己校验、出叠图，问你 3–5 个图上读不出来的问题 | 在「改改你的家」点「粘贴方案」看叠图、校验；对不上点「复制问题给 Chat」贴回去 |
+| 2 核对 | Agent；工具 | Agent 自己校验、出叠图，问你 3–5 个图上读不出来的问题；在对话里答，或在「改改你的家」的「待核对」里答完点「把答复交给 Agent」，它处理完在每张问题卡上写回复 | 在「改改你的家」点「粘贴方案」看叠图、校验；对不上点「复制问题给 Chat」贴回去 |
 | 3 3D | Agent；工具 | Agent 出 `白模.glb`、斜视俯视和房间平视的白模图 | 在工具里切到 3D 转着看 |
 | 4 改造 | Agent；工具 | 说「把这面墙拆掉看看」；或在工具里改完交回给 Agent | 在工具里选中墙或门窗点「交给 Agent」，把复制的文字贴给 Chat |
 | 5 看感觉 | 生图服务 | Agent 出素材、写提示词、自动打分，不过就换输入重出（第 9 步） | 工具「导出图片」导出白模图，配[生图提示词](chat/image-prompt.md)发给能生成图片的 Chat |
@@ -157,8 +157,10 @@ cp -R see-your-home/skill/see-your-home 我的户型/.claude/skills/
 下载「改改你的家」：在 GitHub 打开 [try-your-home.html 的文件页](https://github.com/ai-azhou/try-your-home/blob/main/try-your-home.html)，点「Download raw file」，双击打开，不联网、不用装。把 `交付/方案.json` 拖进去，就能看叠图和 3D、拖墙试改造、试装修，顶栏「导出」出改造清单 PDF。完整用法见 [USAGE.md](https://github.com/ai-azhou/try-your-home/blob/main/docs/USAGE.md)。
 
 - 改完在「导出」里存一份方案文件 JSON，回来跟 Agent 说「我改好了」，告诉它文件在哪，它重新校验、重新出图。
+- 「待核对」里的问题直接在工具里答，答完点「把答复交给 Agent」，把复制的文字发给 Agent。它逐条处理，在每张问题卡上写回复（改了哪里、为什么没改）；你在工具的「待核对」里能看到哪些已处理、Agent 怎么回的。
 - 在工具里选中墙或门窗，点「交给 Agent」写一句话，把复制的文字贴给 Agent，它照你说的改。
 - 你本机有 try-your-home 的仓库、装了 Node，可以让 Agent 开本地服务模式：它改文件，页面自动刷新。
+- 配套版本：Skill v1.2 起问题卡带状态和 Agent 回复，要用 try-your-home **v0.10.0 或更新**的版本打开；旧版会报「格式错误，没有载入」，重新下载一次就好。
 
 ## 效果示意图（v1.1，可选）
 
