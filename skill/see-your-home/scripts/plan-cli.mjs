@@ -1,4 +1,4 @@
-// Shared core base git commit: e25495b6a85cc3104f17bd063a68c4603508377b; no uncommitted core changes.
+// Shared core base git commit: c35515a0363540cd36148ee3844cb9953239dd60; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -143,13 +143,13 @@ function assertLevel(plan, level) {
 	if (level !== void 0 && !levelsOf(plan).some((l) => l.id === level)) throw new Error(`未知楼层：${level}`);
 }
 var add = (a, b) => [a[0] + b[0], a[1] + b[1]];
-var sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+var sub$1 = (a, b) => [a[0] - b[0], a[1] - b[1]];
 var mul = (a, s) => [a[0] * s, a[1] * s];
-var dot$1 = (a, b) => a[0] * b[0] + a[1] * b[1];
-var distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+var dot$2 = (a, b) => a[0] * b[0] + a[1] * b[1];
+var distance$1 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function wallDir(w) {
-	const d = sub(w.b, w.a);
+	const d = sub$1(w.b, w.a);
 	return mul(d, 1 / (Math.hypot(...d) || 1));
 }
 function wallNormal(w) {
@@ -157,13 +157,13 @@ function wallNormal(w) {
 	return [-d[1], d[0]];
 }
 function arc(w) {
-	const chord = distance(w.a, w.b), sag = w.bulge || 0;
+	const chord = distance$1(w.a, w.b), sag = w.bulge || 0;
 	if (chord < 1e-7 || Math.abs(sag) < 1e-7) return null;
 	const c = sag / 2 - chord * chord / (8 * sag);
 	const center = add(mul(add(w.a, w.b), .5), mul(wallNormal(w), c));
 	return {
 		center,
-		radius: distance(center, w.a),
+		radius: distance$1(center, w.a),
 		start: Math.atan2(w.a[1] - center[1], w.a[0] - center[0]),
 		sweep: -4 * Math.atan(2 * sag / chord)
 	};
@@ -180,14 +180,14 @@ function arcParams(w) {
 }
 function wallLength(w) {
 	const a = arc(w);
-	return a ? a.radius * Math.abs(a.sweep) : distance(w.a, w.b);
+	return a ? a.radius * Math.abs(a.sweep) : distance$1(w.a, w.b);
 }
 function pointAt(w, s) {
 	const len = wallLength(w), t = len > 1e-7 ? clamp(s / len, 0, 1) : 0;
 	if (t === 0) return [...w.a];
 	if (t === 1) return [...w.b];
 	const a = arc(w);
-	return a ? add(a.center, mul([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul(sub(w.b, w.a), t));
+	return a ? add(a.center, mul([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul(sub$1(w.b, w.a), t));
 }
 /** Exact unit tangent along the centerline, also at circular wall endpoints. */
 function wallTangent(w, s) {
@@ -203,7 +203,7 @@ function wallPath(w) {
 }
 function projectToWall(w, p) {
 	const a = arc(w), len = wallLength(w);
-	let s = clamp(dot$1(sub(p, w.a), wallDir(w)), 0, len);
+	let s = clamp(dot$2(sub$1(p, w.a), wallDir(w)), 0, len);
 	if (a) {
 		const angle = Math.atan2(p[1] - a.center[1], p[0] - a.center[0]);
 		const candidates = [0, len];
@@ -211,12 +211,12 @@ function projectToWall(w, p) {
 			const t = (angle - a.start + k * Math.PI * 2) / a.sweep;
 			if (t >= 0 && t <= 1) candidates.push(t * len);
 		}
-		s = candidates.reduce((best, cur) => distance(pointAt(w, cur), p) < distance(pointAt(w, best), p) ? cur : best);
+		s = candidates.reduce((best, cur) => distance$1(pointAt(w, cur), p) < distance$1(pointAt(w, best), p) ? cur : best);
 	}
 	const point = pointAt(w, s);
 	return {
 		s,
-		dist: distance(point, p),
+		dist: distance$1(point, p),
 		point
 	};
 }
@@ -232,7 +232,7 @@ function sliceWall(w, from, to) {
 }
 function wallFootprint(w) {
 	const path = wallPath(w), a = arc(w), half = w.thickness / 2;
-	const normals = path.map((p) => a ? mul(sub(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
+	const normals = path.map((p) => a ? mul(sub$1(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
 	return [...path.map((p, i) => add(p, mul(normals[i], half))), ...path.map((p, i) => add(p, mul(normals[i], -half))).reverse()];
 }
 function beamFootprint(b) {
@@ -274,8 +274,8 @@ function polygonArea(poly) {
 function pointInPolygon(p, poly) {
 	let inside = false;
 	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-		const a = poly[j], b = poly[i], d = sub(b, a);
-		if (distance(p, add(a, mul(d, clamp(dot$1(sub(p, a), d) / (dot$1(d, d) || 1), 0, 1)))) < 1e-7) return true;
+		const a = poly[j], b = poly[i], d = sub$1(b, a);
+		if (distance$1(p, add(a, mul(d, clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), 0, 1)))) < 1e-7) return true;
 		if (a[1] > p[1] !== b[1] > p[1] && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
 	}
 	return inside;
@@ -330,12 +330,12 @@ function roomsBesideWall(plan, wallId) {
 		const a = path[i - 1], b = path[i], n = wallNormal({
 			a,
 			b
-		}), d = sub(b, a);
+		}), d = sub$1(b, a);
 		const ts = [
 			.1,
 			.5,
 			.9,
-			...room.poly.map((p) => clamp(dot$1(sub(p, a), d) / (dot$1(d, d) || 1), .001, .999))
+			...room.poly.map((p) => clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), .001, .999))
 		];
 		for (const side of ["positive", "negative"]) if (!result[side].includes(room) && ts.some((t) => pointInPolygon(add(add(a, mul(d, t)), mul(n, (wall.thickness / 2 + 1) * (side === "positive" ? 1 : -1))), room.poly))) result[side].push(room);
 	}
@@ -2101,7 +2101,7 @@ var index = {
 	difference: difference$1
 };
 var JOIN_TOLERANCE = 1;
-var cross$1 = (a, b) => a[0] * b[1] - a[1] * b[0];
+var cross$2 = (a, b) => a[0] * b[1] - a[1] * b[0];
 var union = (polys) => {
 	const rounded = polys.map((rings) => rings.map((ring) => ring.map(([x, y]) => [Math.round(x * 1e6) / 1e6, Math.round(y * 1e6) / 1e6])));
 	return rounded.length ? index.union(rounded[0], ...rounded.slice(1)) : [];
@@ -2119,7 +2119,7 @@ function ray(wall, end) {
 /** Each exterior join is split along its bisector so filtering keeps each wall's own part. */
 function endPatches(plan, w, end) {
 	const p = w[end];
-	const rays = plan.walls.filter((o) => levelOf(plan, o).id === levelOf(plan, w).id && wallLength(o) > 1e-7 && o.thickness > 0).flatMap((o) => ["a", "b"].filter((e) => distance(o[e], p) <= JOIN_TOLERANCE).map((e) => ray(o, e))).sort((a, b) => a.angle - b.angle);
+	const rays = plan.walls.filter((o) => levelOf(plan, o).id === levelOf(plan, w).id && wallLength(o) > 1e-7 && o.thickness > 0).flatMap((o) => ["a", "b"].filter((e) => distance$1(o[e], p) <= JOIN_TOLERANCE).map((e) => ray(o, e))).sort((a, b) => a.angle - b.angle);
 	if (rays.length < 2) return [];
 	const patches = [];
 	for (let i = 0; i < rays.length; i++) {
@@ -2128,11 +2128,11 @@ function endPatches(plan, w, end) {
 		if ((b.angle - a.angle + Math.PI * 2) % (Math.PI * 2) <= Math.PI + 1e-7) continue;
 		const na = [-a.dir[1], a.dir[0]], nb = [-b.dir[1], b.dir[0]];
 		const ca = add(p, mul(na, a.wall.thickness / 2)), cb = add(p, mul(nb, -b.wall.thickness / 2));
-		const det = cross$1(a.dir, b.dir);
+		const det = cross$2(a.dir, b.dir);
 		let tip = mul(add(ca, cb), .5);
 		if (Math.abs(det) > 1e-8) {
-			const intersection = add(ca, mul(a.dir, cross$1(sub(cb, ca), b.dir) / det));
-			if (distance(p, intersection) <= 4 * Math.max(a.wall.thickness, b.wall.thickness) / 2) tip = intersection;
+			const intersection = add(ca, mul(a.dir, cross$2(sub$1(cb, ca), b.dir) / det));
+			if (distance$1(p, intersection) <= 4 * Math.max(a.wall.thickness, b.wall.thickness) / 2) tip = intersection;
 		}
 		if (a.wall.id === w.id && a.end === end) patches.push([
 			p,
@@ -2261,18 +2261,18 @@ function faceRun(plan, face) {
 		s: [0, axis.length],
 		reversed: false
 	}];
-	const candidates = plan.walls.filter((v) => !v.bulge && levelOf(plan, v).id === levelOf(plan, w).id && Math.abs(dot$1(wallDir(v), n)) < 1e-7 && Math.abs(dot$1(sub(v.a, w.a), n)) < 1e-5).map((v) => {
-		const reversed = dot$1(wallDir(v), d) < 0, side = reversed ? -face.side : face.side;
+	const candidates = plan.walls.filter((v) => !v.bulge && levelOf(plan, v).id === levelOf(plan, w).id && Math.abs(dot$2(wallDir(v), n)) < 1e-7 && Math.abs(dot$2(sub$1(v.a, w.a), n)) < 1e-5).map((v) => {
+		const reversed = dot$2(wallDir(v), d) < 0, side = reversed ? -face.side : face.side;
 		return {
 			face: {
 				wall: v.id,
 				side
 			},
 			wall: v,
-			s: ordered(dot$1(sub(v.a, w.a), d), dot$1(sub(v.b, w.a), d)),
+			s: ordered(dot$2(sub$1(v.a, w.a), d), dot$2(sub$1(v.b, w.a), d)),
 			reversed
 		};
-	}).filter((v) => Math.abs(dot$1(sub(faceAxis(plan, v.face).at(0), axis.at(0)), n)) < 1e-5);
+	}).filter((v) => Math.abs(dot$2(sub$1(faceAxis(plan, v.face).at(0), axis.at(0)), n)) < 1e-5);
 	const chain = candidates.filter((v) => v.wall.id === w.id);
 	let changed = true;
 	while (changed) {
@@ -2293,9 +2293,9 @@ function faceIntervals(plan, face) {
 	for (const v of neighbors) for (const rings of joinedWallFootprint(plan, v)) {
 		const ts = [0, axis.length];
 		for (const ring of rings) ring.forEach((a, i) => {
-			const b = ring[(i + 1) % ring.length], e = sub(b, a), det = d[0] * e[1] - d[1] * e[0];
+			const b = ring[(i + 1) % ring.length], e = sub$1(b, a), det = d[0] * e[1] - d[1] * e[0];
 			if (Math.abs(det) < 1e-9) return;
-			const q = sub(a, origin), t = (q[0] * e[1] - q[1] * e[0]) / det, u = (q[0] * d[1] - q[1] * d[0]) / det;
+			const q = sub$1(a, origin), t = (q[0] * e[1] - q[1] * e[0]) / det, u = (q[0] * d[1] - q[1] * d[0]) / det;
 			if (u >= 0 && u <= 1 && t > 0 && t < axis.length) ts.push(t);
 		});
 		ts.sort((a, b) => a - b);
@@ -2806,6 +2806,9 @@ function footprint(at, rot, size) {
 		[-w / 2, d / 2]
 	].map(([x, y]) => add(at, [x * co - y * si, x * si + y * co]));
 }
+function furnitureLevel(plan, f) {
+	return levelOf(plan, { level: f.in ? furniturePose(plan, f).level : plan.walls.find((w) => w.id === f.against?.face.wall)?.level ?? f.level });
+}
 /** World XY in mm; z floor-relative metres; hosted rot is a local offset. */
 function furniturePose(plan, f) {
 	let center = f.at ?? [0, 0], rotation = f.rot ?? 0, height = f.z ?? 0, level = levelOf(plan, plan.walls.find((w) => w.id === f.against?.face.wall) ?? f).id, missing = false;
@@ -2818,7 +2821,7 @@ function furniturePose(plan, f) {
 			if (!cab) throw new Error("missing cabinet");
 			const cell = layoutCabinet(cab).cells.find((c) => c.column === +cellRef[2] && c.row === +cellRef[3]);
 			if (!cell) throw new Error("missing cell");
-			const at = cabinetTransform(plan, cab), n = sub(at(0, 1), at(0, 0));
+			const at = cabinetTransform(plan, cab), n = sub$1(at(0, 1), at(0, 0));
 			center = at((cell.u[0] + cell.u[1]) / 2, cab.depth - f.size[1] / 2);
 			rotation = Math.atan2(n[1], n[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
 			height = f.z ?? cell.z[0];
@@ -2851,7 +2854,7 @@ function furniturePose(plan, f) {
 				hostLevel = "face" in host.place ? faceAxis(plan, host.place.face).wall.level : host.level;
 			}
 			center = at(width / 2, front - f.size[1] / 2);
-			const normal = sub(at(0, 1), at(0, 0));
+			const normal = sub$1(at(0, 1), at(0, 0));
 			rotation = Math.atan2(normal[1], normal[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
 			height = f.z ?? z[0];
 			level = levelOf(plan, { level: hostLevel }).id;
@@ -10537,7 +10540,7 @@ function paneData(panes) {
 		kind: p.kind
 	}));
 }
-function evidence(e) {
+function evidence$1(e) {
 	return {
 		certainty: certainty(e.kind ?? e.certainty),
 		...e.basis ? { basis: e.basis } : {},
@@ -10600,13 +10603,13 @@ function fromLegacy(json) {
 	});
 	const parents = original.map((_, i) => i);
 	const root = (i) => parents[i] === i ? i : parents[i] = root(parents[i]);
-	const aligned = (a, b) => Math.abs(dot$1(wallDir(a), wallNormal(b))) < 1e-6 && Math.abs(dot$1([b.a[0] - a.a[0], b.a[1] - a.a[1]], wallNormal(a))) <= 15 && Math.abs(a.thickness - b.thickness) <= 30;
+	const aligned = (a, b) => Math.abs(dot$2(wallDir(a), wallNormal(b))) < 1e-6 && Math.abs(dot$2([b.a[0] - a.a[0], b.a[1] - a.a[1]], wallNormal(a))) <= 15 && Math.abs(a.thickness - b.thickness) <= 30;
 	for (let i = 0; i < original.length; i++) for (let j = i + 1; j < original.length; j++) {
 		const a = original[i], b = original[j];
 		if (a.kind !== b.kind || !aligned(a, b)) continue;
-		const d = wallDir(a), start = dot$1(a.a, d), end = dot$1(a.b, d), bs = dot$1(b.a, d), be = dot$1(b.b, d);
+		const d = wallDir(a), start = dot$2(a.a, d), end = dot$2(a.b, d), bs = dot$2(b.a, d), be = dot$2(b.b, d);
 		const lo = Math.min(end, be), hi = Math.max(start, bs);
-		const intervals = gaps.map((g) => rectWall(g.rect, "", a.kind)).filter((g) => aligned(a, g)).map((g) => [dot$1(g.a, d), dot$1(g.b, d)]).sort((a, b) => a[0] - b[0]);
+		const intervals = gaps.map((g) => rectWall(g.rect, "", a.kind)).filter((g) => aligned(a, g)).map((g) => [dot$2(g.a, d), dot$2(g.b, d)]).sort((a, b) => a[0] - b[0]);
 		let covered = lo;
 		for (const [s, e] of intervals) if (s <= covered + 1 && e >= covered) covered = Math.max(covered, e);
 		if (hi <= lo + 1 || covered >= hi - 1) parents[root(j)] = root(i);
@@ -10617,9 +10620,9 @@ function fromLegacy(json) {
 		groups.set(key, [...groups.get(key) ?? [], w]);
 	});
 	for (const ws of groups.values()) {
-		const first = ws[0], d = wallDir(first), all = ws.flatMap((w) => [w.a, w.b]).sort((a, b) => dot$1(a, d) - dot$1(b, d));
+		const first = ws[0], d = wallDir(first), all = ws.flatMap((w) => [w.a, w.b]).sort((a, b) => dot$2(a, d) - dot$2(b, d));
 		const onLine = (p) => {
-			const s = dot$1([p[0] - first.a[0], p[1] - first.a[1]], d);
+			const s = dot$2([p[0] - first.a[0], p[1] - first.a[1]], d);
 			return [first.a[0] + d[0] * s, first.a[1] + d[1] * s];
 		};
 		const w = {
@@ -10630,9 +10633,9 @@ function fromLegacy(json) {
 		plan.walls.push(w);
 		for (const old of ws) report.idMap[old.id] = {
 			wall: w.id,
-			offset: dot$1([old.a[0] - w.a[0], old.a[1] - w.a[1]], d)
+			offset: dot$2([old.a[0] - w.a[0], old.a[1] - w.a[1]], d)
 		};
-		if (ws.some((x) => x.thickness !== first.thickness || Math.abs(dot$1([x.a[0] - first.a[0], x.a[1] - first.a[1]], wallNormal(first))) > .001)) report.approximations.push(`合并墙 ${w.id} 的厚度及中心线取第一段，容差分别为 30mm、15mm`);
+		if (ws.some((x) => x.thickness !== first.thickness || Math.abs(dot$2([x.a[0] - first.a[0], x.a[1] - first.a[1]], wallNormal(first))) > .001)) report.approximations.push(`合并墙 ${w.id} 的厚度及中心线取第一段，容差分别为 30mm、15mm`);
 	}
 	original.forEach((w, i) => {
 		targetMap[`walls[${i}]`] = report.idMap[w.id].wall;
@@ -10640,9 +10643,9 @@ function fromLegacy(json) {
 	});
 	for (const gap of gaps) {
 		const gw = rectWall(gap.rect, "", "partition"), len = wallLength(gw), d = wallDir(gw);
-		let wall = plan.walls.find((w) => aligned(w, gw) && dot$1(w.a, d) <= dot$1(gw.a, d) + 1 && dot$1(w.b, d) >= dot$1(gw.b, d) - 1);
+		let wall = plan.walls.find((w) => aligned(w, gw) && dot$2(w.a, d) <= dot$2(gw.a, d) + 1 && dot$2(w.b, d) >= dot$2(gw.b, d) - 1);
 		if (!wall) {
-			const neighbors = plan.walls.filter((w) => aligned(w, gw) && Math.min(distance(w.a, gw.b), distance(w.b, gw.a)) <= 31);
+			const neighbors = plan.walls.filter((w) => aligned(w, gw) && Math.min(distance$1(w.a, gw.b), distance$1(w.b, gw.a)) <= 31);
 			const requested = gap.raw.wallType ? wallKind(gap.raw.wallType) : void 0;
 			let id = `${gap.id}:host`;
 			while (plan.walls.some((w) => w.id === id)) id += "_";
@@ -10668,10 +10671,10 @@ function fromLegacy(json) {
 		if (gap.raw.entry !== void 0) o.entry = gap.raw.entry;
 		if (gap.raw.panes) o.panes = paneData(gap.raw.panes);
 		if (o.kind === "door") o.swing = {
-			hinge: gap.raw.h && distance(gap.raw.h, gw.b) < distance(gap.raw.h, gw.a) ? "end" : "start",
-			side: gap.raw.o && dot$1(gap.raw.o, wallNormal(wall)) < 0 ? -1 : 1
+			hinge: gap.raw.h && distance$1(gap.raw.h, gw.b) < distance$1(gap.raw.h, gw.a) ? "end" : "start",
+			side: gap.raw.o && dot$2(gap.raw.o, wallNormal(wall)) < 0 ? -1 : 1
 		};
-		if (gap.raw.source) o.evidence = evidence(gap.raw.source);
+		if (gap.raw.source) o.evidence = evidence$1(gap.raw.source);
 		plan.openings.push(o);
 		targetMap[gap.key] = o.id;
 		targetMap[o.id] = o.id;
@@ -10758,7 +10761,7 @@ function fromLegacy(json) {
 		].find((x) => x.id === id);
 		if (item) {
 			if (item.evidence) report.approximations.push(`构件 ${id} 有多段证据，显示最后一条，全部原证据保留在 legacy.layout.evidence`);
-			item.evidence = evidence(e);
+			item.evidence = evidence$1(e);
 		} else report.warnings.push(`证据 ${e.id ?? ""} 的目标 ${e.target} 无法挂接，原文已保留`);
 	}
 	const aliases = {};
@@ -10941,6 +10944,554 @@ function fromLegacy(json) {
 		report
 	};
 }
+// src/core/simple.ts
+var SIMPLE_FORMAT = "floorplan-simple";
+var SIMPLE_BASIS = "简版格式自动生成";
+var EPS = 1e-5;
+var record = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+var finite$3 = (v) => typeof v === "number" && Number.isFinite(v);
+var evidence = () => ({
+	certainty: "inferred",
+	basis: SIMPLE_BASIS
+});
+var sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+var dot$1 = (a, b) => a[0] * b[0] + a[1] * b[1];
+var cross$1 = (a, b) => a[0] * b[1] - a[1] * b[0];
+var distance = (a, b) => Math.hypot(...sub(a, b));
+var round = (p) => p.map((n) => Math.round(n * 1e6) / 1e6);
+var at = (a, d, s) => round([a[0] + d[0] * s, a[1] + d[1] * s]);
+var direction = (a, b) => {
+	const l = distance(a, b);
+	return [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+};
+var bbox = (points) => [
+	Math.min(...points.map((p) => p[0])),
+	Math.min(...points.map((p) => p[1])),
+	Math.max(...points.map((p) => p[0])),
+	Math.max(...points.map((p) => p[1]))
+];
+var signedArea$1 = (poly) => poly.reduce((s, p, i) => s + cross$1(p, poly[(i + 1) % poly.length]), 0) / 2;
+var area$1 = (polys) => polys.reduce((s, p) => s + polygonArea(p[0]) - p.slice(1).reduce((n, h) => n + polygonArea(h), 0), 0);
+var outside = (v) => typeof v === "string" && [
+	"外面",
+	"室外",
+	"户外",
+	"outside"
+].includes(v);
+function simpleObject(value) {
+	if (!record(value)) return null;
+	if (value.format === "floorplan-simple" || value["floorplan-simple"] === 1 || value["floorplan-simple"] === "version 1") return { value };
+	const keys = Object.keys(value), child = value[keys[0]];
+	if (keys.length === 1 && record(child) && child.format === "floorplan-simple") return {
+		value: child,
+		wrapper: keys[0]
+	};
+	return null;
+}
+function isSimplePlan(value) {
+	return simpleObject(value) !== null;
+}
+/** Remove closing/collinear vertices from clipping output, without rounding away thin shapes. */
+function cleanRing(poly) {
+	let points = poly.filter((p, i) => distance(p, poly[(i + 1) % poly.length]) > EPS);
+	let changed = true;
+	while (changed && points.length > 3) {
+		changed = false;
+		for (let i = 0; i < points.length; i++) {
+			const a = points[(i + points.length - 1) % points.length], p = points[i], b = points[(i + 1) % points.length];
+			if (Math.abs(cross$1(sub(p, a), sub(b, a))) <= EPS * distance(a, b) && dot$1(sub(p, a), sub(p, b)) <= EPS) {
+				points.splice(i, 1);
+				changed = true;
+				break;
+			}
+		}
+	}
+	return points;
+}
+/** Cluster vertices across rooms, then project shared clusters together onto nearby edge interiors. */
+function snapRooms(rooms, notes) {
+	const vertices = rooms.flatMap((r, room) => r.poly.map((p, vertex) => ({
+		p,
+		room,
+		vertex
+	})));
+	const groups = vertices.map((_, i) => [i]);
+	const candidates = [];
+	for (let i = 0; i < vertices.length; i++) for (let j = i + 1; j < vertices.length; j++) {
+		const d = distance(vertices[i].p, vertices[j].p);
+		if (vertices[i].room !== vertices[j].room && d <= 150) candidates.push({
+			i,
+			j,
+			d
+		});
+	}
+	candidates.sort((a, b) => a.d - b.d);
+	for (const { i, j } of candidates) {
+		const a = groups.find((g) => g.includes(i)), b = groups.find((g) => g.includes(j));
+		if (a === b || a.some((x) => b.some((y) => vertices[x].room === vertices[y].room || distance(vertices[x].p, vertices[y].p) > 150))) continue;
+		a.push(...b);
+		groups.splice(groups.indexOf(b), 1);
+	}
+	const original = rooms.map((r) => r.poly);
+	const clustered = rooms.map((r) => r.poly.map((p) => [...p]));
+	for (const group of groups) {
+		const p = round(group.reduce((p, i) => [p[0] + vertices[i].p[0] / group.length, p[1] + vertices[i].p[1] / group.length], [0, 0]));
+		for (const i of group) clustered[vertices[i].room][vertices[i].vertex] = p;
+	}
+	if (clustered.some(invalidPolygon)) {
+		notes.push("顶点吸附会使房间退化或自交，保留原顶点");
+		return;
+	}
+	const projected = clustered.map((poly) => poly.map((p) => [...p]));
+	for (const group of groups) {
+		const first = vertices[group[0]], p = clustered[first.room][first.vertex];
+		let best, bestDistance = 150.00001;
+		for (let ri = 0; ri < rooms.length; ri++) {
+			if (group.some((i) => vertices[i].room === ri)) continue;
+			const poly = clustered[ri];
+			for (let k = 0; k < poly.length; k++) {
+				const a = poly[k], b = poly[(k + 1) % poly.length], d = direction(a, b), s = dot$1(sub(p, a), d);
+				if (s <= EPS || s >= distance(a, b) - EPS) continue;
+				const q = at(a, d, s), gap = distance(p, q);
+				if (gap < bestDistance) {
+					best = q;
+					bestDistance = gap;
+				}
+			}
+		}
+		if (best) for (const i of group) projected[vertices[i].room][vertices[i].vertex] = best;
+	}
+	const final = projected.some(invalidPolygon) ? clustered : projected;
+	if (final !== projected) notes.push("边投影会使房间退化或自交，仅保留顶点吸附");
+	rooms.forEach((r, i) => {
+		r.poly = final[i];
+	});
+	if (final.some((p, i) => p.some((v, j) => distance(v, original[i][j]) > EPS))) notes.push(`已按 150 mm 容差吸附房间顶点和边`);
+}
+function splitEdges(rooms) {
+	const vertices = rooms.flatMap((r) => r.poly), segments = /* @__PURE__ */ new Map();
+	rooms.forEach((r, room) => r.poly.forEach((a, i) => {
+		const b = r.poly[(i + 1) % r.poly.length], d = direction(a, b), length = distance(a, b);
+		const cuts = [0, length];
+		for (const p of vertices) {
+			const s = dot$1(sub(p, a), d);
+			if (s > EPS && s < length - EPS && Math.abs(cross$1(sub(p, a), d)) <= EPS) cuts.push(s);
+		}
+		cuts.sort((a, b) => a - b);
+		for (let j = 1; j < cuts.length; j++) {
+			if (cuts[j] - cuts[j - 1] <= EPS) continue;
+			let p = at(a, d, cuts[j - 1]), q = at(a, d, cuts[j]);
+			if (p[0] > q[0] || p[0] === q[0] && p[1] > q[1]) [p, q] = [q, p];
+			const key = `${p}:${q}`, existing = segments.get(key);
+			if (existing) {
+				if (!existing.owners.includes(room)) existing.owners.push(room);
+			} else segments.set(key, {
+				a: p,
+				b: q,
+				owners: [room]
+			});
+		}
+	}));
+	return [...segments.values()];
+}
+function collinear(a, b) {
+	const d = direction(a.a, a.b);
+	return Math.abs(cross$1(d, direction(b.a, b.b))) < 1e-8 && Math.abs(cross$1(sub(b.a, a.a), d)) <= EPS;
+}
+function mergeRuns(edges) {
+	const runs = edges.map((e) => ({
+		...e,
+		kind: e.owners.length > 1 ? "partition" : "exterior",
+		pieces: [e]
+	}));
+	for (let i = 0; i < runs.length; i++) for (let j = i + 1; j < runs.length; j++) {
+		const a = runs[i], b = runs[j];
+		if (a.kind !== b.kind || !collinear(a, b)) continue;
+		const d = direction(a.a, a.b), s = dot$1(sub(b.a, a.a), d), t = dot$1(sub(b.b, a.a), d), length = distance(a.a, a.b);
+		if (Math.min(s, t) > length + EPS || Math.max(s, t) < -1e-5) continue;
+		const start = at(a.a, d, Math.min(0, s, t)), end = at(a.a, d, Math.max(length, s, t));
+		a.a = start;
+		a.b = end;
+		a.pieces.push(...b.pieces);
+		a.owners = [.../* @__PURE__ */ new Set([...a.owners, ...b.owners])];
+		runs.splice(j, 1);
+		i--;
+		break;
+	}
+	return runs;
+}
+function intervals(run, belongs) {
+	const d = direction(run.a, run.b);
+	const spans = run.pieces.filter(belongs).map((p) => [dot$1(sub(p.a, run.a), d), dot$1(sub(p.b, run.a), d)].sort((a, b) => a - b)).sort((a, b) => a[0] - b[0]);
+	const merged = [];
+	for (const span of spans) {
+		const last = merged.at(-1);
+		if (last && span[0] <= last[1] + EPS) last[1] = Math.max(last[1], span[1]);
+		else merged.push([...span]);
+	}
+	return merged;
+}
+function wallRect(w) {
+	const d = direction(w.a, w.b), n = [-d[1], d[0]], h = w.thickness / 2;
+	return [[
+		at(w.a, n, h),
+		at(w.b, n, h),
+		at(w.b, n, -h),
+		at(w.a, n, -h)
+	]];
+}
+function simpleToPlan(value) {
+	const notes = [], issues = [], parsed = simpleObject(value);
+	const error = (message) => issues.push({
+		level: "error",
+		code: "simple-shape",
+		message
+	});
+	if (!parsed) {
+		error("format：要写 \"floorplan-simple\"，version：要写 1");
+		return {
+			plan: null,
+			issues,
+			notes
+		};
+	}
+	const input = parsed.value;
+	if (parsed.wrapper) notes.push(`已拆掉外面多套的一层 ${parsed.wrapper}`);
+	if (input["floorplan-simple"] !== void 0) notes.push("格式标记写成了键，已按 format: \"floorplan-simple\", version: 1 读取");
+	if (input.version === void 0 || input.version === "1") notes.push("version 缺失或是字符串，已按 1 读取");
+	else if (input.version !== 1) error("version：简版格式只支持 1");
+	const extras = /* @__PURE__ */ new Set();
+	const extra = (o, allowed) => Object.keys(o).filter((k) => !allowed.includes(k)).forEach((k) => extras.add(k));
+	extra(input, [
+		"format",
+		"version",
+		"title",
+		"rooms",
+		"doors",
+		SIMPLE_FORMAT
+	]);
+	if (!Array.isArray(input.rooms) || !input.rooms.length) {
+		error("rooms：至少要写一间房");
+		return {
+			plan: null,
+			issues,
+			notes
+		};
+	}
+	const rooms = [], aliases = /* @__PURE__ */ new Map(), names = /* @__PURE__ */ new Set();
+	const ids = /* @__PURE__ */ new Set(), reserved = new Set(input.rooms.flatMap((r) => record(r) && typeof r.id === "string" && r.id && !r.id.startsWith("simple-") ? [r.id] : []));
+	const unique = (base) => {
+		let id = base, i = 2;
+		while (ids.has(id) || reserved.has(id)) id = `${base}-${i++}`;
+		ids.add(id);
+		return id;
+	};
+	const coordinates = [];
+	input.rooms.forEach((raw, index) => {
+		const r = record(raw) ? raw : {}, name = typeof r.name === "string" ? r.name.trim() : "";
+		const path = `rooms[${index}]${name ? `（${name}）` : ""}`;
+		if (!name) error(`${path}.name：每间房要写 name`);
+		extra(r, [
+			"id",
+			"name",
+			"rect",
+			"poly"
+		]);
+		let poly = [];
+		if (r.rect !== void 0 && r.poly !== void 0) {
+			error(`${path}：rect 和 poly 要二选一`);
+			return;
+		}
+		if (r.poly !== void 0) {
+			if (!Array.isArray(r.poly) || r.poly.length < 3) {
+				error(`${path}.poly：至少要 3 个点`);
+				return;
+			}
+			let objects = false;
+			for (const [i, rawPoint] of r.poly.entries()) {
+				const p = record(rawPoint) ? (objects = true, extra(rawPoint, ["x", "y"]), [rawPoint.x, rawPoint.y]) : rawPoint;
+				if (!Array.isArray(p) || p.length !== 2 || !p.every(finite$3)) {
+					error(`${path}.poly[${i}]：坐标要写两个有限数`);
+					continue;
+				}
+				poly.push([p[0], p[1]]);
+				coordinates.push(...p);
+			}
+			if (objects) notes.push(`${path}.poly 的 {x, y} 已转成 [x, y]`);
+		} else {
+			let rect = r.rect;
+			if (record(rect)) {
+				extra(rect, [
+					"x",
+					"y",
+					"w",
+					"h",
+					"width",
+					"height"
+				]);
+				rect = [
+					rect.x,
+					rect.y,
+					rect.w ?? rect.width,
+					rect.h ?? rect.height
+				];
+				notes.push(`${path}.rect 的对象已转成 [x, y, 宽, 深]`);
+			}
+			if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(finite$3)) {
+				error(`${path}.rect：要写 [左上角 x, 左上角 y, 宽, 深] 四个有限数`);
+				return;
+			}
+			const [x, y, w, h] = rect;
+			if (w <= 0 || h <= 0) {
+				error(`${path}.rect：宽和深必须大于 0`);
+				return;
+			}
+			coordinates.push(...rect);
+			poly = [
+				[x, y],
+				[x + w, y],
+				[x + w, y + h],
+				[x, y + h]
+			];
+		}
+		if (poly.length < 3 || poly.some((p) => !p.every(finite$3)) || invalidPolygon(poly)) {
+			error(`${path}.${r.poly !== void 0 ? "poly" : "rect"}：多边形自交或退化，请按边界顺序写顶点`);
+			return;
+		}
+		let renamed = name, n = 2;
+		while (names.has(renamed)) renamed = `${name} ${n++}`;
+		if (renamed !== name) notes.push(`${path} 重名，已改成「${renamed}」；doors 引用「${name}」时按第一间`);
+		names.add(renamed);
+		let id;
+		if (typeof r.id === "string" && r.id && !ids.has(r.id) && !r.id.startsWith("simple-")) {
+			id = r.id;
+			ids.add(id);
+		} else {
+			id = unique(`r${index + 1}`);
+			if (r.id !== void 0) notes.push(`${path}.id 无效、重复或占用 simple- 问题卡前缀，已改为 ${id}`);
+		}
+		const roomIndex = rooms.length;
+		for (const alias of [
+			name,
+			renamed,
+			typeof r.id === "string" ? r.id : id
+		]) if (!aliases.has(alias)) aliases.set(alias, roomIndex);
+		rooms.push({
+			id,
+			name: renamed,
+			poly
+		});
+	});
+	if (issues.length) return {
+		plan: null,
+		issues,
+		notes
+	};
+	const plan = {
+		...emptyPlan(),
+		title: typeof input.title === "string" ? input.title : "简版方案",
+		meta: { source: SIMPLE_FORMAT }
+	};
+	const question = (id, text, fields = {}) => plan.questions.push({
+		id: unique(id),
+		text,
+		category: "original",
+		certainty: "inferred",
+		...fields
+	});
+	const warn = (id, text, fields = {}) => {
+		issues.push({
+			level: "warn",
+			code: id,
+			message: text
+		});
+		question(id, text, fields);
+	};
+	question("simple-windows", "这是简版方案：窗户没有读出来，请在工具里自己加。", { certainty: "unknown" });
+	if (coordinates.every((n) => Math.abs(n) <= 100)) {
+		rooms.forEach((r) => {
+			r.poly = r.poly.map((p) => [p[0] * 1e3, p[1] * 1e3]);
+		});
+		const text = "坐标像是米，已按毫米 ×1000 换算，请核对尺寸";
+		notes.push(text);
+		question("simple-units", text);
+	}
+	snapRooms(rooms, notes);
+	const edges = splitEdges(rooms), doors = [];
+	if (input.doors !== void 0 && !Array.isArray(input.doors)) warn("simple-doors", "doors：要写门的数组，已忽略，需自行补门");
+	for (const [index, raw] of (Array.isArray(input.doors) ? input.doors : []).entries()) {
+		const d = record(raw) ? raw : {};
+		extra(d, [
+			"between",
+			"open",
+			"from",
+			"to"
+		]);
+		let between = d.between;
+		if (between === void 0 && ("from" in d || "to" in d)) {
+			between = [d.from, d.to];
+			notes.push(`doors[${index}] 的 from/to 已转成 between`);
+		}
+		const pair = Array.isArray(between) && between.length === 2 ? between : [];
+		const entry = pair.some(outside), refs = entry && outside(pair[0]) ? [pair[1], pair[0]] : pair;
+		const a = typeof refs[0] === "string" && !outside(refs[0]) ? aliases.get(refs[0]) : void 0;
+		const b = typeof refs[1] === "string" && !outside(refs[1]) ? aliases.get(refs[1]) : void 0;
+		const label = `doors[${index}]（${pair.map(String).join(" / ")}）`;
+		if (a === void 0 || !entry && b === void 0 || a === b) {
+			warn(`simple-door-${index + 1}`, `${label}：房间不存在或两端是同一间房，未生成门`);
+			continue;
+		}
+		if (!entry && !edges.some((e) => e.owners.includes(a) && e.owners.includes(b))) {
+			warn(`simple-door-${index + 1}`, `${label}：两间房没有共用边，未生成门`);
+			continue;
+		}
+		doors.push({
+			index,
+			a,
+			b,
+			entry,
+			open: d.open === true,
+			label
+		});
+	}
+	if (extras.size) notes.push(`已忽略多余字段：${[...extras].sort().join("、")}`);
+	const openPairs = doors.filter((d) => d.open && !d.entry);
+	const runs = mergeRuns(edges.filter((e) => !openPairs.some((d) => e.owners.includes(d.a) && e.owners.includes(d.b))));
+	runs.forEach((run, i) => {
+		const wall = {
+			id: unique(`w${i + 1}`),
+			a: run.a,
+			b: run.b,
+			thickness: DEFAULTS.thickness[run.kind],
+			kind: run.kind,
+			name: run.owners.map((n) => rooms[n].name).join(" / ") + (run.kind === "exterior" ? " 外墙" : ""),
+			evidence: evidence()
+		};
+		run.wall = wall;
+		plan.walls.push(wall);
+	});
+	for (const door of doors) {
+		if (door.open && !door.entry) continue;
+		const chosen = runs.flatMap((run) => intervals(run, (e) => door.entry ? run.kind === "exterior" && e.owners.includes(door.a) : e.owners.includes(door.a) && e.owners.includes(door.b)).map((span) => ({
+			run,
+			span,
+			length: span[1] - span[0]
+		}))).sort((a, b) => b.length - a.length)[0], qid = `simple-door-${door.index + 1}`;
+		if (!chosen) {
+			warn(qid, `${door.label}：${door.entry ? "这间房没有外墙" : "共用边为敞开区域，没有墙"}，未生成门`);
+			continue;
+		}
+		const { run, span, length } = chosen, normalWidth = door.entry ? 1e3 : DEFAULTS.opening.door.width;
+		const width = Math.min(normalWidth, length - 200);
+		if (width < 600) {
+			warn(qid, `${door.label}：共用段或外墙段长 ${Math.round(length)} mm，留两侧各 100 mm 后门宽不足 600 mm，未生成门`, { targets: [run.wall.id] });
+			continue;
+		}
+		const offset = Math.max(0, (span[0] + span[1] - width) / 2);
+		if (plan.openings.some((o) => o.wall === run.wall.id && Math.min(o.offset + o.width, offset + width) - Math.max(o.offset, offset) > EPS)) {
+			warn(qid, `${door.label}：居中位置与已有门重叠，未重复生成门`, { targets: [run.wall.id] });
+			continue;
+		}
+		const id = unique(`o${door.index + 1}`);
+		plan.openings.push({
+			id,
+			wall: run.wall.id,
+			offset,
+			width,
+			kind: "door",
+			sill: 0,
+			head: DEFAULTS.opening.door.head,
+			...door.entry ? { entry: true } : {},
+			name: door.label,
+			evidence: evidence()
+		});
+		if (width < normalWidth) notes.push(`${door.label}：门宽已缩为 ${Math.round(width)} mm，两侧各留 100 mm`);
+		if (door.entry) question("simple-entry", `入户门放在了『${rooms[door.a].name}』最长的那段外墙中间，是工具猜的，请确认，不对就在工具里挪`, { targets: [id] });
+	}
+	addGeometryQuestions(rooms, edges, question);
+	const wallArea = plan.walls.map(wallRect).reduce((all, footprint) => index.union(all, footprint).map((p) => p.map((r) => r.map(round))), []);
+	rooms.forEach((room, index$2) => {
+		let net = wallArea.length ? index.difference([room.poly], wallArea) : [[room.poly]];
+		const holes = net.flatMap((p) => p.slice(1)), bounds = bbox(room.poly);
+		if (holes.length) {
+			notes.push(`rooms[${index$2}]（${room.name}）净面含内孔，已用 0.01 mm 细缝连到外缘以保留扣除面积`);
+			for (const hole of holes) {
+				const p = hole.reduce((a, b) => a[0] < b[0] ? a : b);
+				net = index.difference(net, [[
+					[bounds[0] - 1, p[1] - .005],
+					[p[0] + .005, p[1] - .005],
+					[p[0] + .005, p[1] + .005],
+					[bounds[0] - 1, p[1] + .005]
+				]]);
+			}
+		}
+		net.sort((a, b) => area$1([b]) - area$1([a]));
+		const poly = net[0] ? cleanRing(net[0][0]) : [];
+		if (poly.length < 3 || invalidPolygon(poly)) {
+			warn(`simple-room-${index$2 + 1}`, `rooms[${index$2}]（${room.name}）：扣墙后没有有效净面，未生成房间，请核对尺寸`);
+			return;
+		}
+		if (net.length > 1) notes.push(`rooms[${index$2}]（${room.name}）扣墙后分成 ${net.length} 块，保留面积最大的一块`);
+		plan.rooms.push({
+			id: room.id,
+			name: room.name,
+			poly,
+			evidence: evidence()
+		});
+	});
+	issues.push(...validatePlan(plan));
+	return {
+		plan,
+		issues,
+		notes
+	};
+}
+function addGeometryQuestions(rooms, edges, question) {
+	let overlap = 0, gap = 0, hole = 0;
+	for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++) {
+		const intersection = index.intersection([rooms[i].poly], [rooms[j].poly]);
+		if (area$1(intersection) > 5e4) question(`simple-overlap-${++overlap}`, `『${rooms[i].name}』和『${rooms[j].name}』有重叠，墙可能不对，请核对`, {
+			bbox: bbox(intersection.flat(2)),
+			targets: [rooms[i].id, rooms[j].id]
+		});
+	}
+	const union = index.union([rooms[0].poly], ...rooms.slice(1).map((r) => [r.poly]));
+	for (const p of union) for (const ring of p.slice(1)) if (polygonArea(ring) > 1e5) question(`simple-hole-${++hole}`, "这里有一块空白没有房间，可能漏了房间或坐标没对齐", { bbox: bbox(ring) });
+	const external = rooms.flatMap((_, i) => mergeRuns(edges.filter((e) => e.owners.length === 1 && e.owners[0] === i)));
+	const outward = (e) => {
+		const room = rooms[e.owners[0]], d = direction(e.a, e.b);
+		const mid = at(e.a, d, distance(e.a, e.b) / 2);
+		const index = room.poly.findIndex((a, i) => {
+			const b = room.poly[(i + 1) % room.poly.length];
+			return Math.abs(cross$1(sub(mid, a), direction(a, b))) <= EPS && dot$1(sub(mid, a), sub(mid, b)) <= EPS;
+		});
+		const a = room.poly[index], b = room.poly[(index + 1) % room.poly.length];
+		const sign = Math.sign(signedArea$1(room.poly) * dot$1(sub(b, a), d));
+		return [d[1] * sign, -d[0] * sign];
+	};
+	for (let i = 0; i < external.length; i++) for (let j = i + 1; j < external.length; j++) {
+		const a = external[i], b = external[j], ra = a.owners[0], rb = b.owners[0];
+		if (ra === rb) continue;
+		const d = direction(a.a, a.b);
+		if (Math.abs(cross$1(d, direction(b.a, b.b))) > 1e-8) continue;
+		const n = outward(a), m = outward(b), delta = sub(b.a, a.a), separation = dot$1(delta, n);
+		if (dot$1(n, m) > -.999999 || separation <= 150.00001 || separation > 600.00001) continue;
+		const s = dot$1(delta, d), t = dot$1(sub(b.b, a.a), d);
+		const lo = Math.max(0, Math.min(s, t)), hi = Math.min(distance(a.a, a.b), Math.max(s, t));
+		if (hi - lo < 299.99999) continue;
+		const p = at(a.a, d, lo), q = at(a.a, d, hi), corridor = [
+			p,
+			q,
+			at(q, n, separation),
+			at(p, n, separation)
+		];
+		if (area$1(index.intersection([corridor], union)) > 2 * EPS * (hi - lo + separation)) continue;
+		question(`simple-gap-${++gap}`, `『${rooms[ra].name}』和『${rooms[rb].name}』之间有一条 ${Math.round(separation)} mm 的缝，生成了两道外墙，请核对`, {
+			bbox: bbox(corridor),
+			targets: [rooms[ra].id, rooms[rb].id]
+		});
+	}
+}
 // src/core/io.ts
 function stable(value) {
 	if (Array.isArray(value)) return value.map(stable);
@@ -11014,19 +11565,60 @@ function planFileValue(plan) {
 function serializePlan(plan) {
 	return JSON.stringify(stable(planFileValue(plan)), null, 2) + "\n";
 }
+/**
+* Format marker and the six arrays of a v2/v3 file. Chat replies often leave out arrays that may be empty
+* (beams / questions / changes): those become [] and are reported back; anything else is named, never guessed.
+*/
+function shapeOf(value) {
+	const problems = [], filled = [], seen = (v) => v === void 0 ? "缺失" : v === null ? "null" : Array.isArray(v) ? "数组" : JSON.stringify(v).length <= 24 ? JSON.stringify(v) : typeof v;
+	if (value.format !== "floorplan-structure") problems.push(`format 应为 "floorplan-structure"（现在是 ${seen(value.format)}）`);
+	if (![2, 3].includes(value.version)) problems.push(`version 应为 3（现在是 ${seen(value.version)}）`);
+	for (const k of [
+		"walls",
+		"openings",
+		"beams",
+		"rooms",
+		"questions",
+		"changes"
+	]) {
+		if (Array.isArray(value[k])) continue;
+		if (value[k] === void 0 && [
+			"beams",
+			"questions",
+			"changes"
+		].includes(k)) {
+			value[k] = [];
+			filled.push(k);
+			continue;
+		}
+		problems.push(value[k] === void 0 ? `缺 ${k} 数组（没有就写 []）` : `${k} 应为数组（现在是 ${seen(value[k])}）`);
+	}
+	if (problems.length) throw new Error(`方案格式不完整：${problems.join("；")}`);
+	return filled;
+}
 function parsePlanText(text) {
 	try {
 		const value = JSON.parse(text.replace(/^\uFEFF/, ""));
-		if (value?.format === "floorplan-structure" || [2, 3].includes(value?.version)) {
-			const report = importReport("v2");
-			if (value.format !== "floorplan-structure" || ![2, 3].includes(value.version) || ![
+		if (isSimplePlan(value)) {
+			const converted = simpleToPlan(value), report = importReport("simple"), plan = converted.plan ?? emptyPlan();
+			report.approximations = converted.notes;
+			report.counts = Object.fromEntries([
 				"walls",
 				"openings",
 				"beams",
 				"rooms",
 				"questions",
 				"changes"
-			].every((k) => Array.isArray(value[k]))) throw new Error("v2/v3 方案标记或构件数组不完整");
+			].map((k) => [k, plan[k].length]));
+			report.warnings = converted.issues.filter((i) => i.level === "warn").map((i) => i.message);
+			return {
+				plan,
+				report,
+				issues: converted.issues
+			};
+		}
+		if (value?.format === "floorplan-structure" || [2, 3].includes(value?.version)) {
+			const report = importReport("v2"), filled = shapeOf(value);
 			if (value.version === 3) shiftPlan(value, -3);
 			value.version = 2;
 			if (Array.isArray(value.decor?.furniture)) {
@@ -11053,7 +11645,11 @@ function parsePlanText(text) {
 			return {
 				plan: value,
 				report,
-				issues: validatePlan(value)
+				issues: [...filled.map((k) => ({
+					level: "warn",
+					code: "missing-array",
+					message: `方案里没写 ${k}，已按空数组 [] 载入`
+				})), ...validatePlan(value)]
 			};
 		}
 		const converted = fromLegacy(value);
@@ -11200,7 +11796,7 @@ function resolveSurfaces(plan, opts = {}) {
 			0,
 			axis.length,
 			...overrides.flatMap((s) => "face" in s.target ? s.target.s ?? [] : []),
-			...adjacent.flatMap((r) => r.poly.map((p) => w.bulge ? projectToWall(w, p).s : dot$1(sub(p, w.a), wallDir(w))))
+			...adjacent.flatMap((r) => r.poly.map((p) => w.bulge ? projectToWall(w, p).s : dot$2(sub$1(p, w.a), wallDir(w))))
 		].filter((s) => s >= 0 && s <= axis.length);
 		const zs = [
 			0,
@@ -11394,7 +11990,7 @@ function faceRoom(plan, face) {
 	if (!w) return void 0;
 	const rooms = roomsBesideWall(plan, w.id)[face.side === 1 ? "positive" : "negative"], axis = faceAxis(plan, face);
 	const length = (r) => {
-		const ss = r.poly.filter((p) => Math.abs(dot$1(sub(p, axis.at(0)), axis.normal)) < 30).map((p) => Math.max(0, Math.min(axis.length, dot$1(sub(p, w.a), wallDir(w)))));
+		const ss = r.poly.filter((p) => Math.abs(dot$2(sub$1(p, axis.at(0)), axis.normal)) < 30).map((p) => Math.max(0, Math.min(axis.length, dot$2(sub$1(p, w.a), wallDir(w)))));
 		return ss.length ? Math.max(...ss) - Math.min(...ss) : 0;
 	};
 	return [...rooms].sort((a, b) => length(b) - length(a) || polygonArea(b.poly) - polygonArea(a.poly))[0];
@@ -11436,7 +12032,7 @@ function wallEmbed(plan, item) {
 		depth: item.embed
 	} : void 0;
 	if (!item.against) return void 0;
-	const wall = faceWall(plan, item.against.face), ss = furnitureFootprint(item, plan).map((p) => dot$1(sub(p, wall.a), wallDir(wall)));
+	const wall = faceWall(plan, item.against.face), ss = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall)));
 	return {
 		id: item.id,
 		face: item.against.face,
@@ -11542,10 +12138,10 @@ function checkEmbed(plan, decor, item, originalPlan = plan) {
 		const ow = faceWall(plan, other.face);
 		if (levelOf(plan, ow).id !== levelOf(plan, wall).id || ow.bulge) continue;
 		const oa = faceAxis(plan, other.face);
-		if (dot$1(axis.normal, oa.normal) > -.999999) continue;
+		if (dot$2(axis.normal, oa.normal) > -.999999) continue;
 		const shared = covered.find((p) => p.wall.id === ow.id) ?? covered.find((p) => faceRun(plan, other.face).some((q) => q.wall.id === p.wall.id));
 		if (!shared) continue;
-		const projected = ordered(...other.s.map((s) => oa.at(s)).map((p) => dot$1(sub(p, wall.a), wallDir(wall))));
+		const projected = ordered(...other.s.map((s) => oa.at(s)).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall))));
 		const depth = e.depth === "through" ? shared.wall.thickness : e.depth, otherDepth = other.depth === "through" ? shared.wall.thickness : other.depth;
 		if (overlap(e.s, projected) && depth + otherDepth >= shared.wall.thickness) issue("meet-other-side", `这面墙另一侧也挖了 ${otherDepth} mm，两边合计 ${depth + otherDepth} mm，达到或超过墙厚 ${shared.wall.thickness} mm`);
 	}
@@ -12478,7 +13074,7 @@ function itemSpan(plan, item) {
 		};
 	}
 	if ("against" in item && item.against) {
-		const a = faceAxis(plan, item.against.face), values = furnitureFootprint(item, plan).map((p) => dot$1(sub(p, a.wall.a), wallDir(a.wall)));
+		const a = faceAxis(plan, item.against.face), values = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, a.wall.a), wallDir(a.wall)));
 		return {
 			face: item.against.face,
 			s: [Math.min(...values), Math.max(...values)],
@@ -12583,14 +13179,14 @@ function resolveDecor(plan, afterOrDecor) {
 		}
 		const dir = wallDir(before), candidates = after.walls.filter((w) => (w.id === root || w.id.startsWith(`${root}~`)) && !w.bulge && levelOf(after, w).id === levelOf(plan, before).id);
 		const match = candidates.find((w) => {
-			const ss = ordered(dot$1(sub(w.a, before.a), dir), dot$1(sub(w.b, before.a), dir));
+			const ss = ordered(dot$2(sub$1(w.a, before.a), dir), dot$2(sub$1(w.b, before.a), dir));
 			return sp.s[0] >= ss[0] - 1e-5 && sp.s[1] <= ss[1] + 1e-5;
 		});
 		if (!match) {
 			problem(id, candidates.length ? "host-cut" : "host-missing", candidates.length ? "构件跨过拆掉的墙段，需裁到剩下的墙上或挪位置" : "宿主墙拆了，没地方挂了");
 			return;
 		}
-		const shift = dot$1(sub(match.a, before.a), dir), reversed = dot$1(wallDir(match), dir) < 0;
+		const shift = dot$2(sub$1(match.a, before.a), dir), reversed = dot$2(wallDir(match), dir) < 0;
 		const s = ordered((sp.s[0] - shift) * (reversed ? -1 : 1), (sp.s[1] - shift) * (reversed ? -1 : 1)), face = {
 			wall: match.id,
 			side: reversed ? -sp.face.side : sp.face.side
@@ -13716,7 +14312,7 @@ function buildSolids(plan, filter = () => true) {
 		for (const stair of view.stairs ?? []) {
 			const target = levelsOf(plan).find((l) => l.id === stair.to);
 			if (!target || target.elevation <= level.elevation || stair.path.length < 2) continue;
-			const lengths = stair.path.slice(1).map((p, i) => distance(stair.path[i], p)), total = lengths.reduce((a, b) => a + b, 0);
+			const lengths = stair.path.slice(1).map((p, i) => distance$1(stair.path[i], p)), total = lengths.reduce((a, b) => a + b, 0);
 			const count = stair.steps ?? Math.max(1, Math.ceil((target.elevation - level.elevation) / .17));
 			if (!total || !Number.isInteger(count) || count < 1) continue;
 			for (let step = 0; step < count; step++) {
@@ -13726,7 +14322,7 @@ function buildSolids(plan, filter = () => true) {
 				lengths.forEach((length, i) => {
 					const a = Math.max(from, offset), b = Math.min(to, offset + length);
 					if (b > a && length > 0) {
-						const origin = stair.path[i], d = mul(sub(stair.path[i + 1], origin), 1 / length);
+						const origin = stair.path[i], d = mul(sub$1(stair.path[i + 1], origin), 1 / length);
 						strips.push([beamFootprint({
 							id: stair.id,
 							a: add(origin, mul(d, a - offset)),
@@ -13804,7 +14400,7 @@ function buildLocalFixtures(plan, opts = {}) {
 			const chordDir = wallDir({
 				a: s.a,
 				b: s.b
-			}), chordNormal = [-chordDir[1], chordDir[0]], width = s.wall.bulge ? distance(s.a, s.b) : o.width;
+			}), chordNormal = [-chordDir[1], chordDir[0]], width = s.wall.bulge ? distance$1(s.a, s.b) : o.width;
 			const swing = o.swing ?? {
 				hinge: "start",
 				side: 1
@@ -13866,7 +14462,7 @@ function buildLocalFixtures(plan, opts = {}) {
 						center: s.wall.bulge ? mul(add(a, b), .5) : pointAt(s.wall, offset + width / 2),
 						dir: s.wall.bulge ? dir : s.dir,
 						normal: s.wall.bulge ? [-dir[1], dir[0]] : s.normal,
-						width: s.wall.bulge ? distance(a, b) : width,
+						width: s.wall.bulge ? distance$1(a, b) : width,
 						thickness: 30,
 						z0: o.sill,
 						z1: o.head
@@ -13890,7 +14486,8 @@ function buildFixtures(plan, opts = {}) {
 	});
 }
 // src/core/mesh.ts
-/** White-model palette = the tool's clay3 set in three/materials.ts (sRGB). Glass is a pale cool white, drawn see-through. */
+/** White-model palette = the tool's clay3 set in three/materials.ts (sRGB). Glass is a pale cool white, drawn see-through.
+* Decor follows the tool's decor-mode clay look: furniture in the platform tone, cabinets and panels in the wall tone. */
 var CLAY_COLORS = {
 	wall: "#f4f4f3",
 	sill: "#f4f4f3",
@@ -13907,7 +14504,9 @@ var CLAY_COLORS = {
 	pane: "#eef3f7",
 	rail: "#ececea",
 	plinth: "#f2f2f1",
-	ceiling: "#f4f4f3"
+	ceiling: "#f4f4f3",
+	furniture: "#f0f0ee",
+	cabinet: "#f4f4f3"
 };
 /** Kinds drawn as light see-through glass (GLB alpha blend, raster one-layer see-through). */
 var GLASS_KINDS = /* @__PURE__ */ new Set(["glass", "pane"]);
@@ -14239,6 +14838,163 @@ function meshToGlb(groups) {
 function exportGlb(plan, options = {}) {
 	return meshToGlb(buildMesh(plan, options));
 }
+// src/core/decor/solids.ts
+/** A complete structural scene, with real recesses subtracted; buildSolids stays untouched. */
+function decorWallSolids(plan, decor = plan.decor) {
+	const base = buildSolids(plan);
+	if (!decor) return base;
+	const source = decorItems(decor), cuts = embedsOf(plan, decor).filter((e) => {
+		return !checkEmbed(plan, decor, source.find((x) => x.id === e.id)).some((i) => i.level === "error");
+	}).map((e) => {
+		const level = levelOf(plan, faceWall(plan, e.face));
+		return {
+			...e,
+			wallIds: faceRun(plan, e.face).filter((p) => overlap(p.s, e.s)).map((p) => p.wall.id),
+			level: level.id,
+			z: [e.z[0] + level.elevation, e.z[1] + level.elevation],
+			poly: embedFootprint(plan, e)
+		};
+	});
+	return base.flatMap((s) => {
+		if (![
+			"wall",
+			"sill",
+			"lintel"
+		].includes(s.kind)) return [s];
+		const active = cuts.filter((c) => s.ids.some((id) => c.wallIds.includes(id)) && c.level === (s.level ?? levelsOf(plan)[0].id) && overlap(c.z, [s.z0, s.z1]));
+		if (!active.length) return [s];
+		const zs = [.../* @__PURE__ */ new Set([
+			s.z0,
+			s.z1,
+			...active.flatMap((c) => c.z.filter((z) => z > s.z0 && z < s.z1))
+		])].sort((a, b) => a - b);
+		return zs.slice(1).flatMap((z1, i) => {
+			const z0 = zs[i], polygons = difference(s.polygons, active.filter((c) => c.z[0] < z1 && c.z[1] > z0).map((c) => [c.poly]));
+			return polygons.length ? [{
+				...s,
+				z0,
+				z1,
+				polygons
+			}] : [];
+		});
+	});
+}
+/** Extruded elevation rectangles, with arbitrary overlapping blind/through box cuts. */
+function cutBox(kind, id, rect, depth, cuts, at, level, material) {
+	const active = cuts.filter((c) => overlap(c.z, rect.z) && overlap(c.u, rect.u) && overlap(c.depth, depth)), zs = [.../* @__PURE__ */ new Set([...rect.z, ...active.flatMap((c) => c.z.filter((z) => z > rect.z[0] && z < rect.z[1]))])].sort((a, b) => a - b);
+	const local = [[rectPoly({
+		u: rect.u,
+		z: depth
+	})]];
+	return zs.slice(1).flatMap((z1, i) => {
+		const z0 = zs[i], polygons = difference(local, active.filter((c) => c.z[0] < z1 && c.z[1] > z0).map((c) => [rectPoly({
+			u: c.u,
+			z: c.depth
+		})])).map((rings) => rings.map((r) => r.map(([u, d]) => at(u, d))));
+		return polygons.length && z1 > z0 ? [{
+			kind,
+			ids: [id],
+			polygons,
+			z0: z0 + level.elevation,
+			z1: z1 + level.elevation,
+			level: level.id,
+			...material ? { material } : {}
+		}] : [];
+	});
+}
+function buildDecorSolids(plan) {
+	if (!plan.decor) return Object.assign([], { hideWallIds: [] });
+	const resolved = plan.decor.furniture.some((f) => f.in) ? resolveDecor(plan) : void 0, d = resolved?.decor ?? plan.decor;
+	plan = {
+		...plan,
+		decor: d
+	};
+	const missing = new Set((resolved?.placed ?? []).filter((p) => p.status === "missing").map((p) => p.id));
+	const result = [], structural = decorWallSolids(plan);
+	const affected = new Set(embedsOf(plan, d).filter((e) => {
+		const item = decorItems(d).find((i) => i.id === e.id);
+		return !checkEmbed(plan, d, item).some((i) => i.level === "error");
+	}).flatMap((e) => faceRun(plan, e.face).filter((p) => overlap(p.s, e.s)).map((p) => p.wall.id)));
+	for (const s of structural) if (s.ids.some((id) => affected.has(id)) && [
+		"wall",
+		"sill",
+		"lintel",
+		"glass"
+	].includes(s.kind)) result.push({
+		...s,
+		kind: `decor-${s.kind}`,
+		replaces: s.kind
+	});
+	for (const cab of d.cabinets.filter((c) => !missing.has(c.id))) {
+		const layout = layoutCabinet(cab);
+		if (layout.issues.some((i) => i.level === "error")) continue;
+		try {
+			const at = cabinetTransform(plan, cab), level = levelOf(plan, "face" in cab.place ? faceWall(plan, cab.place.face) : cab);
+			const cuts = [...layout.cuts, ...d.recesses.filter((r) => "cabinet" in r.host && r.host.cabinet === cab.id && r.rect.u).map((r) => ({
+				u: r.rect.u,
+				z: r.rect.z,
+				depth: r.depth
+			}))].map((c) => ({
+				u: c.u,
+				z: c.z,
+				depth: [c.depth === "through" ? 0 : cab.depth - c.depth, cab.depth]
+			}));
+			for (const p of layout.parts) result.push(...cutBox(`decor-cabinet-${p.kind}`, cab.id, p, p.depth, p.kind === "top" ? [] : cuts, at, level, p.material));
+		} catch {}
+	}
+	for (const panel of d.panels.filter((p) => !missing.has(p.id))) try {
+		const g = panelGeometry(plan, panel), at = panelTransform(plan, panel), level = levelOf(plan, faceWall(plan, g.span.face));
+		const cuts = d.recesses.filter((r) => "panel" in r.host && r.host.panel === panel.id && r.rect.u && !checkEmbed(plan, d, r).some((i) => i.level === "error")).map((r) => ({
+			u: r.rect.u,
+			z: r.rect.z,
+			depth: [r.depth === "through" ? 0 : g.thickness - r.depth, g.thickness]
+		}));
+		const drawPolys = (polys, depth, kind) => {
+			const zs = [...new Set(polys.flatMap((rings) => rings.flatMap((r) => r.map((p) => p[1]))))].sort((a, b) => a - b);
+			for (let i = 1; i < zs.length; i++) {
+				const z0 = zs[i - 1], z1 = zs[i], z = (z0 + z1) / 2;
+				for (const rings of polys) {
+					const xs = [];
+					for (const ring of rings) ring.forEach((a, j) => {
+						const b = ring[(j + 1) % ring.length];
+						if (a[1] <= z && b[1] > z || b[1] <= z && a[1] > z) xs.push(a[0] + (z - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+					});
+					xs.sort((a, b) => a - b);
+					for (let j = 1; j < xs.length; j += 2) result.push(...cutBox(kind, panel.id, {
+						u: [xs[j - 1], xs[j]],
+						z: [z0, z1]
+					}, depth, cuts, at, level, panel.material));
+				}
+			}
+		};
+		drawPolys(g.polygons, [0, g.thickness], "decor-panel");
+		if (panel.frame?.style === "raised") drawPolys(g.frames, [g.thickness, g.thickness + 8], "decor-panel-frame");
+	} catch {}
+	for (const f of d.furniture.filter((f) => !missing.has(f.id) || d.cache?.[f.id])) {
+		const level = furnitureLevel(plan, f);
+		result.push({
+			kind: "decor-furniture",
+			...missing.has(f.id) ? { missing: true } : {},
+			ids: [f.id],
+			polygons: [[furniturePose(plan, f).footprint]],
+			z0: furniturePose(plan, f).z + level.elevation,
+			z1: furniturePose(plan, f).z + f.height + level.elevation,
+			level: level.id,
+			...f.materials?.body ? { material: f.materials.body } : {}
+		});
+	}
+	for (const r of d.recesses) if (r.shelves?.length && !checkEmbed(plan, d, r).some((i) => i.level === "error")) try {
+		const at = hostTransform(plan, d, r.id), width = r.rect.u ? r.rect.u[1] - r.rect.u[0] : r.rect.s[1] - r.rect.s[0];
+		const host = "panel" in r.host ? d.panels.find((p) => p.id === r.host.panel) : "cabinet" in r.host ? d.cabinets.find((c) => c.id === r.host.cabinet) : void 0;
+		const thickness = host ? "thickness" in host ? host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness : host.depth : 0, dep = r.depth === "through" ? thickness : r.depth;
+		const level = levelOf(plan, "face" in r.host ? faceWall(plan, r.host.face) : host && "place" in host && "face" in host.place ? faceWall(plan, host.place.face) : host && "thickness" in host ? faceWall(plan, panelGeometry(plan, host).span.face) : r);
+		if (at) for (const z of r.shelves) result.push(...cutBox("decor-recess-shelf", r.id, {
+			u: [0, width],
+			z: [z - .018, z]
+		}, [thickness - dep, thickness], [], at, level, r.back));
+	} catch {}
+	return Object.assign(result, { hideWallIds: [...new Set(result.filter((s) => s.replaces).flatMap((s) => s.ids).filter((id) => plan.walls.some((w) => w.id === id)))] });
+}
 // src/core/raster.ts
 /**
 * All appearance controls live here (tuned against the tool's D3 white model).
@@ -14380,6 +15136,7 @@ var ROOM_CAMERA = {
 		300,
 		180
 	],
+	furnitureClearances: [600, 200],
 	grid: 7,
 	yaws: 36,
 	pitches: [
@@ -14607,9 +15364,9 @@ function probeView(scene, room, area, pos, yaw, pitch, focus, coarse = false) {
 function cameraRoomEligible(room) {
 	return room.counted !== false && polygonArea(room.poly) >= 15e5 && (room.floorOffset ?? 0) <= .3;
 }
-function roomCamera(plan, room, wallId) {
+function roomCamera(plan, room, wallId, obstacles = []) {
 	if (!cameraRoomEligible(room)) throw new Error(`房间 ${room.id} 不适合站人平视：不计入面积、面积小于 1.5 m² 或地面抬高超过 0.3 m`);
-	const level = levelOf(plan, room), eye = (level.elevation + (room.floorOffset ?? 0)) * 1e3 + ROOM_CAMERA.eye;
+	const level = levelOf(plan, room), floorY = (level.elevation + (room.floorOffset ?? 0)) * 1e3, eye = floorY + ROOM_CAMERA.eye;
 	const walls = plan.walls.filter((w) => levelOf(plan, w).id === level.id), wall = wallId ? walls.find((w) => w.id === wallId) : void 0;
 	if (wallId && !wall) throw new Error(`房间机位的墙不存在：${wallId}`);
 	const doors = plan.openings.filter((o) => o.kind === "door" && levelOf(plan, o).id === level.id).map((o) => ({
@@ -14621,6 +15378,8 @@ function roomCamera(plan, room, wallId) {
 		return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
 	};
 	const clearOf = (p, gap) => pointInPolygon(p, room.poly) && room.poly.every((a, i) => edgeDistance(p, a, room.poly[(i + 1) % room.poly.length]) >= gap) && walls.every((w) => projectToWall(w, p).dist > w.thickness / 2 + gap) && !(plan.columns ?? []).some((c) => levelOf(plan, c).id === level.id && pointInPolygon(p, columnFootprint(c))) && !(plan.shafts ?? []).some((s) => levelOf(plan, s).id === level.id && pointInPolygon(p, s.poly)) && doors.every(({ o, span }) => dist2(p, o.swing?.hinge === "end" ? span.b : span.a) > o.width + 200);
+	const blockers = obstacles.filter((o) => levelOf(plan, { level: o.level }).id === level.id && o.z1 > floorY / 1e3 + .1 && o.z0 < eye / 1e3).flatMap((o) => o.rings);
+	const free = (p, margin) => blockers.every((r) => !pointInPolygon(p, r) && r.every((a, i) => edgeDistance(p, a, r[(i + 1) % r.length]) >= margin));
 	const xs = room.poly.map((p) => p[0]), ys = room.poly.map((p) => p[1]), x0 = Math.min(...xs), y0 = Math.min(...ys), dx = Math.max(...xs) - x0, dy = Math.max(...ys) - y0;
 	const grid = [], n = ROOM_CAMERA.grid;
 	for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) grid.push([x0 + dx * i / n, y0 + dy * j / n]);
@@ -14629,9 +15388,9 @@ function roomCamera(plan, room, wallId) {
 		for (const inset of [700, 1e3]) if (l > inset) grid.push([corner[0] + (c[0] - corner[0]) * inset / l, corner[1] + (c[1] - corner[1]) * inset / l]);
 	}
 	let gap = 0, usable = [];
-	for (gap of ROOM_CAMERA.clearances) {
-		usable = grid.filter((p) => clearOf(p, gap));
-		if (usable.length) break;
+	search: for (const margin of blockers.length ? [...ROOM_CAMERA.furnitureClearances, 0] : [0]) for (gap of ROOM_CAMERA.clearances) {
+		usable = grid.filter((p) => clearOf(p, gap) && (!margin || free(p, margin)));
+		if (usable.length) break search;
 	}
 	if (!usable.length) throw new Error(`房间 ${room.id} 没有避开墙体和门扇的机位，请提供自定义相机`);
 	const focusWalls = /* @__PURE__ */ new Map();
@@ -14735,7 +15494,7 @@ function roomCamera(plan, room, wallId) {
 	};
 }
 function listCameras(source, state = "original", opts = {}) {
-	const plan = preparedPlan(source, state), result = [];
+	const plan = preparedPlan(source, state), result = [], obstacles = decorObstacles(source, plan, { state });
 	assertLevel(plan, opts.level);
 	for (const level of levelsOf(plan)) {
 		if (opts.level && level.id !== opts.level) continue;
@@ -14768,7 +15527,7 @@ function listCameras(source, state = "original", opts = {}) {
 		}
 		const add = (room, wallId) => {
 			try {
-				const camera = roomCamera(floor, room, wallId);
+				const camera = roomCamera(floor, room, wallId, obstacles);
 				result.push({
 					id: camera.id,
 					description: camera.description,
@@ -14814,7 +15573,7 @@ function resolveCamera(source, options = {}) {
 	if (options.camera?.startsWith("room:")) {
 		const suffix = options.camera.slice(5), room = [...plan.rooms].sort((a, b) => b.id.length - a.id.length).find((r) => suffix === r.id || suffix.startsWith(r.id + ":"));
 		if (!room) throw new Error(`未知房间机位：${options.camera}`);
-		return roomCamera(plan, room, suffix === room.id ? void 0 : suffix.slice(room.id.length + 1));
+		return roomCamera(plan, room, suffix === room.id ? void 0 : suffix.slice(room.id.length + 1), decorObstacles(source, selected, options));
 	}
 	const view = options.camera ?? options.view ?? "iso-sw";
 	if (![
@@ -14879,6 +15638,148 @@ function resolveCamera(source, options = {}) {
 		far: distance * 3,
 		level: options.level
 	};
+}
+var decorInfo = /* @__PURE__ */ new WeakMap();
+/** Library types → ADE20K classes; sized variants (bed-1500) fall back to their family, anything unknown is a box. */
+var FURNITURE_SEG = {
+	sofa: "sofa",
+	armchair: "armchair",
+	"coffee-table": "table",
+	"dining-table": "table",
+	table: "table",
+	desk: "desk",
+	chair: "chair",
+	"desk-chair": "chair",
+	bed: "bed",
+	nightstand: "cabinet",
+	"tv-stand": "cabinet",
+	bookshelf: "shelf",
+	wardrobe: "wardrobe",
+	fridge: "refrigerator",
+	washer: "cabinet",
+	dryer: "cabinet",
+	oven: "cabinet",
+	steamer: "cabinet",
+	dishwasher: "cabinet",
+	microwave: "cabinet",
+	rug: "rug",
+	toilet: "toilet",
+	basin: "sink",
+	bathtub: "bathtub"
+};
+var furnitureSeg = (type) => FURNITURE_SEG[type] ?? FURNITURE_SEG[type.replace(/-\d+$/, "")] ?? "box";
+/**
+* The decor layer as the tool's decor mode shows it in clay: furniture boxes, cabinet and panel solids, recess shelves,
+* and walls with niches swapped for their cut replacements (`replaced` keys the structural parts to drop).
+*/
+function decorSkipped(source, full, options) {
+	if (options.decor === false) return "disabled";
+	if (!full.decor) return "none";
+	if ((options.state ?? "original") === "original" && source.changes.some((c) => c.status === "confirmed")) return "original-state";
+}
+/** Footprints of the furniture and cabinets a render will draw, so room cameras stand clear of them. */
+function decorObstacles(source, full, options) {
+	if (decorSkipped(source, full, options)) return [];
+	try {
+		return buildDecorSolids(full).filter((s) => !s.replaces && !s.missing && (s.kind === "decor-furniture" || s.kind.startsWith("decor-cabinet"))).map((s) => ({
+			level: s.level,
+			z0: s.z0,
+			z1: s.z1,
+			rings: s.polygons.map((p) => p[0])
+		}));
+	} catch {
+		return [];
+	}
+}
+function decorScene(source, full, options, level, cutHeight) {
+	const parts = [], replaced = /* @__PURE__ */ new Set(), skip = (skipped, error) => ({
+		parts,
+		replaced,
+		view: {
+			drawn: false,
+			skipped,
+			...error ? { error } : {},
+			visible: []
+		}
+	});
+	const skipped = decorSkipped(source, full, options);
+	if (skipped) return skip(skipped);
+	let solids;
+	try {
+		solids = buildDecorSolids(full);
+	} catch (e) {
+		return skip("error", e instanceof Error ? e.message : String(e));
+	}
+	const d = full.decor, first = levelsOf(full)[0].id;
+	for (const s of solids) {
+		const lv = s.level ?? first;
+		if (s.missing || level && lv !== level) continue;
+		const z1 = cutHeight === void 0 ? s.z1 : Math.min(s.z1, levelOf(full, { level: lv }).elevation + cutHeight);
+		const part = solidMesh({
+			kind: s.replaces ?? (s.kind === "decor-furniture" ? "furniture" : "cabinet"),
+			ids: s.ids,
+			level: lv,
+			polygons: s.polygons,
+			z0: s.z0,
+			z1
+		});
+		if (s.replaces) replaced.add(`${s.replaces}|${s.ids.join(",")}`);
+		if (!part.positions.length) continue;
+		const id = s.ids[0], f = d.furniture.find((x) => x.id === id), c = d.cabinets.find((x) => x.id === id), panel = d.panels.find((x) => x.id === id);
+		if (s.replaces) {} else if (f) decorInfo.set(part, {
+			id,
+			kind: "furniture",
+			type: f.type,
+			name: f.name ?? FURNITURE_LIBRARY.find((e) => e.type === f.type)?.name ?? f.type,
+			seg: furnitureSeg(f.type)
+		});
+		else if (c) decorInfo.set(part, {
+			id,
+			kind: "cabinet",
+			name: c.name ?? "柜体",
+			seg: "cabinet"
+		});
+		else if (panel) decorInfo.set(part, {
+			id,
+			kind: "panel",
+			name: panel.name ?? "墙面造型",
+			seg: "wall"
+		});
+		else decorInfo.set(part, {
+			id,
+			kind: "shelf",
+			name: "壁龛层板",
+			seg: "shelf"
+		});
+		parts.push(part);
+	}
+	return {
+		parts,
+		replaced,
+		view: {
+			drawn: true,
+			visible: []
+		}
+	};
+}
+/** Visible decor items in the final frame (supersampled hits folded back to output pixels), largest first. */
+function visibleDecor(frame) {
+	const counts = /* @__PURE__ */ new Map();
+	for (const index of frame.partAt) {
+		const item = index >= 0 ? decorInfo.get(frame.parts[index]) : void 0;
+		if (item) {
+			const c = counts.get(item.id);
+			if (c) c.n++;
+			else counts.set(item.id, {
+				item,
+				n: 1
+			});
+		}
+	}
+	return [...counts.values()].map(({ item, n }) => ({
+		...item,
+		visible_px: Math.round(n / frame.ss ** 2)
+	})).filter((v) => v.visible_px > 0).sort((a, b) => b.visible_px - a.visible_px);
 }
 function cameraBasis(c) {
 	const toward = unit(sub3(c.pos, c.target)), hint = c.up ?? (Math.abs(toward[1]) > .999 ? [
@@ -15031,9 +15932,9 @@ function contactField(parts, lo, hi) {
 		return 1 - (a * (1 - tz) + b * tz);
 	};
 }
-/** Orthographic depth map seen from the key light; returns 0 (lit) … 1 (fully shadowed) with PCF softening. */
+/** Orthographic depth map seen from the key light; returns 0 (lit) … 1 (fully shadowed) with PCF softening. Furniture boxes do not cast, as in the tool. */
 function shadowMap(parts, key, strength) {
-	const S = RENDER_STYLE.shadow, casters = parts.filter((p) => !GLASS_KINDS.has(p.kind) && p.kind !== "ceiling" && p.kind !== "plinth");
+	const S = RENDER_STYLE.shadow, casters = parts.filter((p) => !GLASS_KINDS.has(p.kind) && p.kind !== "ceiling" && p.kind !== "plinth" && p.kind !== "furniture");
 	if (!casters.length || strength <= 0) return (_) => 0;
 	const toward = key, right = unit(cross(Math.abs(key[1]) > .999 ? [
 		0,
@@ -15110,7 +16011,8 @@ function renderFrame(source, options = {}) {
 	if (options.section !== void 0 && (!Number.isFinite(options.section) || options.section <= 0)) throw new Error("--section 必须是正数 mm");
 	const c = resolveCamera(source, options), full = preparedPlan(source, options.state), level = options.level ?? c.level, plan = level ? selectedLevel(full, level) : full;
 	const cutHeight = options.section !== void 0 ? options.section / 1e3 : c.id === "top" ? S.cutHeight : options.cutHeight;
-	const parts = sharedMesh(plan, { cutHeight }).flatMap((g) => g.parts);
+	const decor = decorScene(source, full, options, level, cutHeight);
+	const parts = [...sharedMesh(plan, { cutHeight }).flatMap((g) => g.parts).filter((p) => !decor.replaced.has(`${p.kind}|${p.ids.join(",")}`)), ...decor.parts];
 	if (!parts.length) throw new Error("方案没有可渲染的实体");
 	const lo = [
 		Infinity,
@@ -15287,6 +16189,10 @@ function renderFrame(source, options = {}) {
 		frame.partAt[i] = index;
 		frame.normals.set(n, i * 3);
 	}));
+	camera.decor = {
+		...decor.view,
+		visible: decor.view.drawn ? visibleDecor(frame) : []
+	};
 	const contactAt = contactField(parts, lo, hi), floorElevations = parts.map((p) => p.positions.reduce((h, v, i) => i % 3 === 1 ? Math.max(h, v) : h, -Infinity));
 	const bg = rgb(S.background), line = rgb(S.outline.color), rim = rgb(S.glass.rimColor), palette = parts.map((p) => rgb(p.kind === "plinth" ? S.base.color : S.colors[p.kind])), er = Math.max(1, Math.round(S.outline.width * ss));
 	const flat = (v) => {
@@ -15424,6 +16330,7 @@ function renderFrame(source, options = {}) {
 	}
 	return frame;
 }
+/** ADE20K palette. Decor classes come from the furniture type; their names are listed in DECOR_SEG_CLASSES. */
 var SEG_CLASSES = {
 	wall: [
 		120,
@@ -15450,13 +16357,109 @@ var SEG_CLASSES = {
 		255,
 		51
 	],
+	bed: [
+		204,
+		5,
+		255
+	],
+	cabinet: [
+		224,
+		5,
+		255
+	],
+	table: [
+		255,
+		6,
+		82
+	],
+	chair: [
+		204,
+		70,
+		3
+	],
+	sofa: [
+		11,
+		102,
+		255
+	],
+	shelf: [
+		255,
+		7,
+		71
+	],
+	rug: [
+		255,
+		9,
+		92
+	],
+	armchair: [
+		8,
+		255,
+		214
+	],
+	desk: [
+		10,
+		255,
+		71
+	],
+	wardrobe: [
+		7,
+		255,
+		255
+	],
+	bathtub: [
+		102,
+		8,
+		255
+	],
+	box: [
+		0,
+		255,
+		20
+	],
+	sink: [
+		0,
+		163,
+		255
+	],
+	refrigerator: [
+		20,
+		255,
+		0
+	],
+	toilet: [
+		0,
+		255,
+		133
+	],
 	none: [
 		0,
 		0,
 		0
 	]
 };
-function classOf(kind) {
+/** Furniture and cabinet classes: gen_score.py leaves their edges out of the structure score. */
+var DECOR_SEG_CLASSES = [
+	"bed",
+	"cabinet",
+	"table",
+	"chair",
+	"sofa",
+	"shelf",
+	"rug",
+	"armchair",
+	"desk",
+	"wardrobe",
+	"bathtub",
+	"box",
+	"sink",
+	"refrigerator",
+	"toilet"
+];
+function classOf(part) {
+	const decor = decorInfo.get(part);
+	if (decor) return decor.seg;
+	const kind = part.kind;
 	if (kind === "ceiling") return "ceiling";
 	if ([
 		"floor",
@@ -15616,7 +16619,7 @@ function renderKit(plan, options = {}) {
 	if (passes.includes("seg")) {
 		files["seg-ade20k.png"] = pixels((i) => {
 			const opening = instance[i] ? instances[instance[i] - 1] : void 0, j = sample[i];
-			return SEG_CLASSES[opening?.cls ?? (j < 0 ? "none" : classOf(f.parts[f.partAt[j]].kind))];
+			return SEG_CLASSES[opening?.cls ?? (j < 0 ? "none" : classOf(f.parts[f.partAt[j]]))];
 		});
 		files["seg.png"] = files["seg-ade20k.png"];
 	}
@@ -15631,6 +16634,7 @@ function renderKit(plan, options = {}) {
 				clipped: max > 65535
 			},
 			segClasses: SEG_CLASSES,
+			segDecorClasses: DECOR_SEG_CLASSES,
 			openingId: "openings.png：16-bit gray = idx，0=无洞口；单扇 opening-NNN.png 为白色可见区域、黑色遮挡/背景；bbox 为闭区间",
 			openingMasks: instances
 		}
@@ -15808,7 +16812,7 @@ else try {
 		"stats \"$WORK/方案.json\"",
 		"decor \"$WORK/方案.json\"",
 		"export \"$WORK/方案.json\" \"$WORK/输出.glb\" [--state original|renovated] [--level id]",
-		"render \"$WORK/方案.json\" \"$WORK/输出目录\" [--camera 预设|room:id|\"$WORK/相机.json\"（可重复）] [--cameras \"$WORK/列表.json\"] [--state original|renovated] [--views iso-sw,iso-ne,iso-se,iso-nw,top] [--level id] [--section mm] [--passes clay,depth,lines,seg,openings] [--size 2400x1600] [--transparent]",
+		"render \"$WORK/方案.json\" \"$WORK/输出目录\" [--camera 预设|room:id|\"$WORK/相机.json\"（可重复）] [--cameras \"$WORK/列表.json\"] [--state original|renovated] [--views iso-sw,iso-ne,iso-se,iso-nw,top] [--level id] [--section mm] [--passes clay,depth,lines,seg,openings] [--size 2400x1600] [--transparent] [--no-decor]",
 		"render \"$WORK/方案.json\" \"$WORK/输出目录\" --camera \"pos=2000,1450,1000;target=2000,1450,4000;fov=75\""
 	].map((line) => "node \"$SKILL/scripts/plan-cli.mjs\" " + line).join("\n"));
 	const { plan, report, issues } = parsePlanText(readFileSync(input === "-" ? 0 : input, "utf8"));
@@ -15846,7 +16850,7 @@ else try {
 			"iso-sw",
 			"iso-ne",
 			"top"
-		], width = 2400, height = 1600, transparent = false;
+		], width = 2400, height = 1600, transparent = false, noDecor = false;
 		const args = command === "cameras" ? [output, ...flags].filter((v) => v !== void 0) : flags;
 		for (let i = 0; i < args.length; i++) {
 			const flag = args[i];
@@ -15860,7 +16864,8 @@ else try {
 			else if (flag === "--transparent" && command === "render") {
 				transparent = true;
 				transparentSet = true;
-			} else if (flag === "--level") {
+			} else if (flag === "--no-decor" && command === "render") noDecor = true;
+			else if (flag === "--level") {
 				level = args[++i];
 				if (!level) throw new Error("--level 缺少楼层 id");
 			} else if (flag === "--section" && command === "render") {
@@ -15928,8 +16933,13 @@ else try {
 					width: sizeSet ? width : record.width ?? width,
 					height: sizeSet ? height : record.height ?? height,
 					transparent: bg,
-					passes: passes ?? record.passes
+					passes: passes ?? record.passes,
+					decor: !noDecor && record.decor?.skipped !== "disabled"
 				});
+				const dv = savedCamera.decor;
+				if (dv?.drawn) process.stderr.write(`装修层：画面里有 ${dv.visible.length} 件（${dv.visible.map((v) => v.name).join("、") || "都在画外或被挡住"}）\n`);
+				else if (dv?.skipped === "original-state") process.stderr.write("装修层：没画。装修是按改造后的格局摆的，原始状态有已确认改造；要带家具出图加 --state renovated\n");
+				else if (dv?.skipped === "error") process.stderr.write(`装修层：没画，装修数据有问题：${dv.error}\n`);
 				mkdirSync(output, { recursive: true });
 				let stem = view.replace(/[^a-zA-Z0-9_-]/g, "_");
 				if (usedNames.has(stem)) stem += `-${savedCamera.level ?? "all"}-${index + 1}`.replace(/[^a-zA-Z0-9_-]/g, "_");

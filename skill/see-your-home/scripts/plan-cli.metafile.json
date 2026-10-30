@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "e25495b6a85cc3104f17bd063a68c4603508377b",
+  "coreCommit": "c35515a0363540cd36148ee3844cb9953239dd60",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -12,7 +12,7 @@
       "renderedLength": 1769
     },
     "src/core/geometry.ts": {
-      "renderedLength": 8149
+      "renderedLength": 8185
     },
     "src/core/protection.ts": {
       "renderedLength": 238
@@ -45,13 +45,13 @@
       "renderedLength": 36061
     },
     "src/core/walls.ts": {
-      "renderedLength": 2672
+      "renderedLength": 2678
     },
     "src/core/decor/math.ts": {
       "renderedLength": 1361
     },
     "src/core/decor/faces.ts": {
-      "renderedLength": 4970
+      "renderedLength": 4982
     },
     "src/core/decor/panels.ts": {
       "renderedLength": 4052
@@ -60,7 +60,7 @@
       "renderedLength": 5917
     },
     "src/core/decor/furniture.ts": {
-      "renderedLength": 5368
+      "renderedLength": 5554
     },
     "src/core/decor/legacy.ts": {
       "renderedLength": 2751
@@ -339,16 +339,19 @@
       "renderedLength": 500
     },
     "src/core/legacy.ts": {
-      "renderedLength": 16076
+      "renderedLength": 16090
+    },
+    "src/core/simple.ts": {
+      "renderedLength": 19695
     },
     "src/core/io.ts": {
-      "renderedLength": 5486
+      "renderedLength": 7026
     },
     "src/core/decor/surfaces.ts": {
-      "renderedLength": 14374
+      "renderedLength": 14380
     },
     "src/core/decor/embed.ts": {
-      "renderedLength": 7016
+      "renderedLength": 7020
     },
     "src/core/decor/validate.ts": {
       "renderedLength": 13933
@@ -363,7 +366,7 @@
       "renderedLength": 13603
     },
     "src/core/decor/resolve.ts": {
-      "renderedLength": 15381
+      "renderedLength": 15389
     },
     "src/core/persistence.ts": {
       "renderedLength": 1399
@@ -375,16 +378,19 @@
       "renderedLength": 2878
     },
     "src/core/solids.ts": {
-      "renderedLength": 11845
+      "renderedLength": 11853
     },
     "src/core/mesh.ts": {
-      "renderedLength": 6978
+      "renderedLength": 7141
     },
     "src/core/glb.ts": {
       "renderedLength": 3886
     },
+    "src/core/decor/solids.ts": {
+      "renderedLength": 7259
+    },
     "src/core/raster.ts": {
-      "renderedLength": 50614
+      "renderedLength": 56814
     },
     "src/core/summary.ts": {
       "renderedLength": 3442
@@ -393,7 +399,7 @@
       "renderedLength": 88963
     },
     "scripts/plan.ts": {
-      "renderedLength": 10461
+      "renderedLength": 11021
     }
   },
   "outputs": {
@@ -409,7 +415,7 @@
           "renderedLength": 1769
         },
         "src/core/geometry.ts": {
-          "renderedLength": 8149
+          "renderedLength": 8185
         },
         "src/core/protection.ts": {
           "renderedLength": 238
@@ -442,13 +448,13 @@
           "renderedLength": 36061
         },
         "src/core/walls.ts": {
-          "renderedLength": 2672
+          "renderedLength": 2678
         },
         "src/core/decor/math.ts": {
           "renderedLength": 1361
         },
         "src/core/decor/faces.ts": {
-          "renderedLength": 4970
+          "renderedLength": 4982
         },
         "src/core/decor/panels.ts": {
           "renderedLength": 4052
@@ -457,7 +463,7 @@
           "renderedLength": 5917
         },
         "src/core/decor/furniture.ts": {
-          "renderedLength": 5368
+          "renderedLength": 5554
         },
         "src/core/decor/legacy.ts": {
           "renderedLength": 2751
@@ -736,16 +742,19 @@
           "renderedLength": 500
         },
         "src/core/legacy.ts": {
-          "renderedLength": 16076
+          "renderedLength": 16090
+        },
+        "src/core/simple.ts": {
+          "renderedLength": 19695
         },
         "src/core/io.ts": {
-          "renderedLength": 5486
+          "renderedLength": 7026
         },
         "src/core/decor/surfaces.ts": {
-          "renderedLength": 14374
+          "renderedLength": 14380
         },
         "src/core/decor/embed.ts": {
-          "renderedLength": 7016
+          "renderedLength": 7020
         },
         "src/core/decor/validate.ts": {
           "renderedLength": 13933
@@ -760,7 +769,7 @@
           "renderedLength": 13603
         },
         "src/core/decor/resolve.ts": {
-          "renderedLength": 15381
+          "renderedLength": 15389
         },
         "src/core/persistence.ts": {
           "renderedLength": 1399
@@ -772,16 +781,19 @@
           "renderedLength": 2878
         },
         "src/core/solids.ts": {
-          "renderedLength": 11845
+          "renderedLength": 11853
         },
         "src/core/mesh.ts": {
-          "renderedLength": 6978
+          "renderedLength": 7141
         },
         "src/core/glb.ts": {
           "renderedLength": 3886
         },
+        "src/core/decor/solids.ts": {
+          "renderedLength": 7259
+        },
         "src/core/raster.ts": {
-          "renderedLength": 50614
+          "renderedLength": 56814
         },
         "src/core/summary.ts": {
           "renderedLength": 3442
@@ -790,7 +802,7 @@
           "renderedLength": 88963
         },
         "scripts/plan.ts": {
-          "renderedLength": 10461
+          "renderedLength": 11021
         }
       },
       "imports": [

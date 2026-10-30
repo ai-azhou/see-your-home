@@ -21,6 +21,9 @@ for template in ('结构参考','风格照片'):
     for o in meta['openings']:
         assert o['name'] in result and f'{100*o["bbox_xyxy"][0]/meta["width"]:.0f}%' in result
     assert ('图4' in result) == (template == '风格照片')
+    # 素材里有家具白盒 → 外轮廓不变；空房间 → 允许按风格配家具（线上 bug B1）。
+    furnished = any(v.get('kind') == 'furniture' for v in (meta.get('decor') or {}).get('visible', []))
+    assert ('外轮廓不变' in result) == furnished and ('空房间' in result) != furnished
     print('prompt:',template,'PASS')
     white = subprocess.check_output([sys.executable, str(script/'gen_prompt.py'), str(camera),
         '--style','奶油原木风', '--template',template,'--white-only'], text=True)

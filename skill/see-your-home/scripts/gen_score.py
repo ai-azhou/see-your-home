@@ -362,8 +362,12 @@ def gt_for(camera_path, lines=None, openings=None, seg=None, clay=None):
     seg_path = path(seg, '.seg.png')
     segmentation = resized(seg_path, mode='RGB') if seg_path.exists() else None
     furniture = np.zeros_like(gt)
-    if segmentation is not None and 'furniture' in meta.get('segClasses', {}):
-        furniture = (segmentation == meta['segClasses']['furniture']).all(2)
+    # 研究素材用单一的 furniture 类；render 画了装修层时，家具和柜体按 segDecorClasses 列出的 ADE20K 类合并。
+    classes = meta.get('segClasses', {})
+    if segmentation is not None:
+        for name in ['furniture', *meta.get('segDecorClasses', [])]:
+            if name in classes:
+                furniture |= (segmentation == classes[name]).all(2)
     m_open = gt & morph(ids>0, 3)
     m_furn = gt & morph(furniture, erode=True) & ~m_open
     if not gt.any():

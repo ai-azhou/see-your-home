@@ -82,7 +82,13 @@
 
 ### 2. 装上 Skill
 
-**最省事：用 `npx skills` 一条命令装**（需要 Node；会从 GitHub 拉取，10-29 实测可用）。在放户型图的文件夹里执行：
+**不会用终端：把下面这句话原样发给你的 Agent**，它会自己帮你装好。先在放户型图的文件夹里打开 Agent，再发：
+
+```text
+帮我安装 see-your-home 这个 Skill：在当前文件夹执行 npx skills add ai-azhou/see-your-home；GitHub 打不开就执行 npx skills add https://gitee.com/gevoll/see-your-home.git
+```
+
+**自己用命令装：`npx skills` 一条命令**（需要 Node；会从 GitHub 拉取，10-29 实测可用）。在放户型图的文件夹里执行：
 
 ```sh
 npx skills add ai-azhou/see-your-home            # 装在当前项目，按提示选 Agent

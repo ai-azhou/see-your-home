@@ -6,6 +6,25 @@ import math
 from pathlib import Path
 
 
+def empty_room(text):
+    """素材里没有家具：允许按风格配家具和软装，只守住门窗、梁和墙。"""
+    required = [('梁边、家具外轮廓都必须', '梁边都必须'),
+                ('只改材质、颜色和光照，不改任何几何。', '墙、门、窗、梁的几何一律不改；房间里还没有家具，家具按【可以改的】来配。'),
+                ('家具的造型只做真实化，外轮廓不变；不增添软装和大件：',
+                 '图里是空房间，可以按风格和房间用途配家具和软装：家具不能挡住门窗和门的开启范围，不能顶到梁和天花；'),
+                ('只改表面：', '表面：')]
+    optional = [('、梁、家具轮廓）', '、梁）'),
+                ('也不要把图4 里的家具和摆件搬进来。', '家具可以参考图4 的风格，但不要照搬图4 的家具摆放。'),
+                ('也不要把图2 里的家具和摆件搬进来。', '家具可以参考图2 的风格，但不要照搬图2 的家具摆放。')]
+    for old, new in required:
+        if text.count(old) != 1:
+            raise ValueError('空房间模板文字不匹配：' + old[:16])
+        text = text.replace(old, new)
+    for old, new in optional:
+        text = text.replace(old, new)
+    return text
+
+
 def fill(camera, style, template='结构参考', floor_y_mm=0, white_only=False):
     if camera.get('projection', 'perspective') != 'perspective':
         raise ValueError('生图提示词需要室内透视机位，不支持正交俯视')
@@ -35,7 +54,17 @@ def fill(camera, style, template='结构参考', floor_y_mm=0, white_only=False)
         scene.append(f'- 画面{side}约 {left:.0f}%–{right:.0f}% 宽是一樘{name}：约 {o["width_mm"] / 1000:g} m 宽、{head-sill:g} m 高；洞底离地 {sill:g} m，洞顶离地 {head:g} m。')
         locked.append(f'{name}（{o["id"]}）的数量、位置、宽高、洞底高度和分格')
     scene.append(f'- 画面可见门窗共 {len(locked)} 个；画外或被完全遮挡的洞口不在此清单。')
-    locked.append('梁、墙角线以及图中已有家具的外轮廓、位置和大小')
+    # render 画了装修层时，camera 里有 decor.visible；旧版 render 出的素材没有家具，按空房间写。
+    visible = (camera.get('decor') or {}).get('visible') or []
+    furniture = [v['name'] for v in visible if v.get('kind') == 'furniture']
+    cabinets = [v['name'] for v in visible if v.get('kind') == 'cabinet']
+    if furniture:
+        scene.append(f'- 画面里的家具白盒：{"、".join(furniture)}' + (f'；柜体：{"、".join(cabinets)}' if cabinets else '') + '。造型只做真实化，外轮廓、位置和大小不变。')
+        locked.append('梁、墙角线以及图中已有家具的外轮廓、位置和大小')
+    else:
+        if cabinets:
+            scene.append(f'- 画面里的柜体：{"、".join(cabinets)}。外轮廓、位置和大小不变。')
+        locked.append('梁、墙角线' + ('以及图中柜体的外轮廓、位置和大小' if cabinets else ''))
     text = (Path(__file__).resolve().parents[1] / 'assets/prompts' / f'{template}.txt').read_text()
     if white_only:
         photo = template == '风格照片'
@@ -51,6 +80,8 @@ def fill(camera, style, template='结构参考', floor_y_mm=0, white_only=False)
             text = text.replace(old, new)
         if photo:
             text = text.replace('图4', '图2')
+    if not furniture:
+        text = empty_room(text)
     return text.format(CAMERA=cam, SCENE='\n'.join(scene), LOCKED='；'.join(locked)+'。',
                        STYLE=style.rstrip('。')+'。', ASPECT=f'{w}:{h}，{w}×{h} 像素')
 

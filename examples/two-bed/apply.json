@@ -39,15 +39,6 @@
       "removed": [],
       "needsConfirm": true,
       "error": "削减、移动、改类型、拆除或开洞承重墙、外墙、承重情况不确定的墙需要用户二次确认"
-    },
-    {
-      "id": "change1",
-      "ok": true,
-      "affected": [],
-      "removed": [
-        "o-master",
-        "w-m"
-      ]
     }
   ],
   "issues": []

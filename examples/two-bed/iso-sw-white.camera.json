@@ -290,6 +290,11 @@
       "mask": "iso-sw-white.opening-012.png"
     }
   ],
+  "decor": {
+    "drawn": false,
+    "skipped": "none",
+    "visible": []
+  },
   "depth": {
     "encoding": "depth16.png：16-bit gray，线性相机 z 毫米；0=无几何；超过65535截断。raw-depthmm.png：R*256+G。depth-inv.png：1/z 单张 min-max 归一化，近白远黑。",
     "min_mm": 25910.602569580078,
@@ -322,12 +327,104 @@
       255,
       51
     ],
+    "bed": [
+      204,
+      5,
+      255
+    ],
+    "cabinet": [
+      224,
+      5,
+      255
+    ],
+    "table": [
+      255,
+      6,
+      82
+    ],
+    "chair": [
+      204,
+      70,
+      3
+    ],
+    "sofa": [
+      11,
+      102,
+      255
+    ],
+    "shelf": [
+      255,
+      7,
+      71
+    ],
+    "rug": [
+      255,
+      9,
+      92
+    ],
+    "armchair": [
+      8,
+      255,
+      214
+    ],
+    "desk": [
+      10,
+      255,
+      71
+    ],
+    "wardrobe": [
+      7,
+      255,
+      255
+    ],
+    "bathtub": [
+      102,
+      8,
+      255
+    ],
+    "box": [
+      0,
+      255,
+      20
+    ],
+    "sink": [
+      0,
+      163,
+      255
+    ],
+    "refrigerator": [
+      20,
+      255,
+      0
+    ],
+    "toilet": [
+      0,
+      255,
+      133
+    ],
     "none": [
       0,
       0,
       0
     ]
   },
+  "segDecorClasses": [
+    "bed",
+    "cabinet",
+    "table",
+    "chair",
+    "sofa",
+    "shelf",
+    "rug",
+    "armchair",
+    "desk",
+    "wardrobe",
+    "bathtub",
+    "box",
+    "sink",
+    "refrigerator",
+    "toilet"
+  ],
   "openingId": "openings.png：16-bit gray = idx，0=无洞口；单扇 opening-NNN.png 为白色可见区域、黑色遮挡/背景；bbox 为闭区间",
   "openingMasks": [
     {
