@@ -77,6 +77,8 @@ Not tested yet: whether the claude.ai cloud environment can run Node 20 and Pill
 
 Start a new Agent session in a folder that holds the drawing after installing. Then, for example: “Show me the bay window in the master bedroom”, “Remove this wall and show me the result”, or “Make a mood image of the living room in light oak and cream”.
 
+To furnish, just tell the Agent: “Put a three-seat sofa on the north wall”, “Hang a 65-inch TV here, 900 mm off the floor”, or send a photo of a sofa and ask for a similar one. Its own proposals show in lavender in the tool for you to confirm. This needs try-your-home v0.13.0 or newer.
+
 To edit by hand, download `try-your-home.html` (“Download raw file” on its [GitHub file page](https://github.com/ai-azhou/try-your-home/blob/main/try-your-home.html)), open `交付/方案.json` in it, export the plan JSON when done and tell the Agent “I'm done” with the file location. “Hand to Agent / 交给 Agent” text from the tool can be pasted straight back to the Agent. Answer the review questions (待核对) in the tool and use “Send answers to agent” (把答复交给 Agent); the Agent replies on each question card, and the tool shows which are handled. Since Skill v1.2, plans need try-your-home **v0.10.0 or later** (older versions refuse the new question fields).
 
 ## Mood images (v1.1, optional)

@@ -2,6 +2,7 @@
 """Offline prompt filling from a render --passes camera JSON (standard library only)."""
 import argparse
 import json
+from collections import Counter
 import math
 from pathlib import Path
 
@@ -51,12 +52,15 @@ def fill(camera, style, template='结构参考', floor_y_mm=0, white_only=False)
         name = o.get('name') or o['kind']
         sill = o.get('sill_mm', o.get('sill_m', 0) * 1000) / 1000
         head = o.get('head_mm', o.get('head_m', 0) * 1000) / 1000
-        scene.append(f'- 画面{side}约 {left:.0f}%–{right:.0f}% 宽是一樘{name}：约 {o["width_mm"] / 1000:g} m 宽、{head-sill:g} m 高；洞底离地 {sill:g} m，洞顶离地 {head:g} m。')
+        look = f'外观：{o["look"]}。' if o.get('look') else ''
+        scene.append(f'- 画面{side}约 {left:.0f}%–{right:.0f}% 宽是一樘{name}：约 {o["width_mm"] / 1000:g} m 宽、{head-sill:g} m 高；洞底离地 {sill:g} m，洞顶离地 {head:g} m。{look}')
         locked.append(f'{name}（{o["id"]}）的数量、位置、宽高、洞底高度和分格')
     scene.append(f'- 画面可见门窗共 {len(locked)} 个；画外或被完全遮挡的洞口不在此清单。')
     # render 画了装修层时，camera 里有 decor.visible；旧版 render 出的素材没有家具，按空房间写。
     visible = (camera.get('decor') or {}).get('visible') or []
-    furniture = [v['name'] for v in visible if v.get('kind') == 'furniture']
+    # 同一种东西摆多个（比如筒灯）合成一条，带数量
+    counted = lambda names: [f'{k} ×{c}' if c > 1 else k for k, c in Counter(names).items()]
+    furniture = counted([v['name'] for v in visible if v.get('kind') == 'furniture'])
     cabinets = [v['name'] for v in visible if v.get('kind') == 'cabinet']
     if furniture:
         scene.append(f'- 画面里的家具白盒：{"、".join(furniture)}' + (f'；柜体：{"、".join(cabinets)}' if cabinets else '') + '。造型只做真实化，外轮廓、位置和大小不变。')
@@ -65,6 +69,10 @@ def fill(camera, style, template='结构参考', floor_y_mm=0, white_only=False)
         if cabinets:
             scene.append(f'- 画面里的柜体：{"、".join(cabinets)}。外轮廓、位置和大小不变。')
         locked.append('梁、墙角线' + ('以及图中柜体的外轮廓、位置和大小' if cabinets else ''))
+    # 方案里写了外观的（look）：这是用户要的材质和样子，形状仍以白模为准
+    looks = list(dict.fromkeys(f'{v["name"]}：{v["look"]}' for v in visible if v.get('look')))
+    if looks:
+        scene.append(f'- 这些东西的外观按下面做，只决定表面材质和细节，外轮廓、位置和大小不变：{"；".join(looks)}。')
     text = (Path(__file__).resolve().parents[1] / 'assets/prompts' / f'{template}.txt').read_text()
     if white_only:
         photo = template == '风格照片'

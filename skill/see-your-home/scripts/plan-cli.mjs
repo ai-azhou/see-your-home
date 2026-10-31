@@ -1,8 +1,8 @@
-// Shared core base git commit: 83a238578810e5b7f108cd9bf4c7a03ff89d8da3; no uncommitted core changes.
+// Shared core base git commit: 59476c2b4a958d3dc8b42b653e8746f9b3796a38; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { basename, dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { deflateSync } from "node:zlib";
 // \0rolldown/runtime.js
 var __create = Object.create;
@@ -44,352 +44,6 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 	enumerable: true
 }) : target, mod));
 var __toCommonJS = (mod) => __hasOwnProp.call(mod, "module.exports") ? mod["module.exports"] : __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-// src/core/types.ts
-/** 新建构件时的默认值（mm / m） */
-var DEFAULTS = {
-	ceiling: 2.8,
-	thickness: {
-		exterior: 240,
-		bearing: 200,
-		partition: 120,
-		glass: 80,
-		half: 120,
-		"half-glass": 120
-	},
-	lowHeight: 1,
-	opening: {
-		door: {
-			width: 900,
-			sill: 0,
-			head: 2.1
-		},
-		sliding: {
-			width: 1600,
-			sill: 0,
-			head: 2.2
-		},
-		doorway: {
-			width: 900,
-			sill: 0,
-			head: 2.1
-		},
-		window: {
-			width: 1500,
-			sill: .9,
-			head: 2.4
-		},
-		"floor-window": {
-			width: 2400,
-			sill: .05,
-			head: 2.5
-		},
-		"bay-window": {
-			width: 1800,
-			sill: .45,
-			head: 2.4
-		},
-		"open-balcony": {
-			width: 2400,
-			sill: 0,
-			head: 2.5
-		}
-	},
-	beam: {
-		width: 240,
-		bottom: 2.5
-	}
-};
-/** 拆除或开洞时需要用户二次确认的墙类型；承重柱（Column.kind = bearing）同样受保护，管道井不可拆（拆除记录一律报 error） */
-var PROTECTED_KINDS = ["bearing", "exterior"];
-// src/core/levels.ts
-/** Array order is floor order; validatePlan requires strictly increasing elevations. */
-function levelsOf(plan) {
-	return plan.levels?.length ? plan.levels : [{
-		id: "L1",
-		name: "1F",
-		elevation: 0
-	}];
-}
-function levelOf(plan, element) {
-	const levels = levelsOf(plan);
-	const id = "wall" in element ? plan.walls.find((w) => w.id === element.wall)?.level : element.level;
-	return levels.find((l) => l.id === id) ?? levels[0];
-}
-function levelCeiling(plan, levelId) {
-	return levelsOf(plan).find((l) => l.id === levelId)?.ceiling ?? plan.ceiling;
-}
-/** Enables additive result metadata only for plans that actually use the extension. */
-function hasLevelData(plan) {
-	return !!(plan.levels?.length || plan.columns?.length || plan.shafts?.length || plan.stairs?.length || plan.voids?.length);
-}
-/** Read-only view: retains levels so omitted level fields still refer to the original first floor. */
-function onLevel(plan, levelId) {
-	const matches = (e) => levelOf(plan, e).id === levelId;
-	return {
-		...plan,
-		ceiling: levelCeiling(plan, levelId),
-		walls: plan.walls.filter(matches),
-		openings: plan.openings.filter(matches),
-		beams: plan.beams.filter(matches),
-		rooms: plan.rooms.filter(matches),
-		questions: plan.questions.filter(matches),
-		...plan.columns ? { columns: plan.columns.filter(matches) } : {},
-		...plan.shafts ? { shafts: plan.shafts.filter(matches) } : {},
-		...plan.stairs ? { stairs: plan.stairs.filter(matches) } : {},
-		...plan.voids ? { voids: plan.voids.filter(matches) } : {},
-		...plan.levelUnderlays?.[levelId] ? { underlay: plan.levelUnderlays[levelId] } : {}
-	};
-}
-function assertLevel(plan, level) {
-	if (level !== void 0 && !levelsOf(plan).some((l) => l.id === level)) throw new Error(`未知楼层：${level}`);
-}
-var add = (a, b) => [a[0] + b[0], a[1] + b[1]];
-var sub$1 = (a, b) => [a[0] - b[0], a[1] - b[1]];
-var mul = (a, s) => [a[0] * s, a[1] * s];
-var dot$2 = (a, b) => a[0] * b[0] + a[1] * b[1];
-var distance$1 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-function wallDir(w) {
-	const d = sub$1(w.b, w.a);
-	return mul(d, 1 / (Math.hypot(...d) || 1));
-}
-function wallNormal(w) {
-	const d = wallDir(w);
-	return [-d[1], d[0]];
-}
-function arc(w) {
-	const chord = distance$1(w.a, w.b), sag = w.bulge || 0;
-	if (chord < 1e-7 || Math.abs(sag) < 1e-7) return null;
-	const c = sag / 2 - chord * chord / (8 * sag);
-	const center = add(mul(add(w.a, w.b), .5), mul(wallNormal(w), c));
-	return {
-		center,
-		radius: distance$1(center, w.a),
-		start: Math.atan2(w.a[1] - center[1], w.a[0] - center[0]),
-		sweep: -4 * Math.atan(2 * sag / chord)
-	};
-}
-/** Signed angle follows bulge (positive toward n), rather than mathematical sweep. */
-function arcParams(w) {
-	const a = arc(w);
-	return a ? {
-		radius: a.radius,
-		angle: -a.sweep * 180 / Math.PI,
-		sagitta: w.bulge,
-		center: a.center
-	} : null;
-}
-function wallLength(w) {
-	const a = arc(w);
-	return a ? a.radius * Math.abs(a.sweep) : distance$1(w.a, w.b);
-}
-function pointAt(w, s) {
-	const len = wallLength(w), t = len > 1e-7 ? clamp(s / len, 0, 1) : 0;
-	if (t === 0) return [...w.a];
-	if (t === 1) return [...w.b];
-	const a = arc(w);
-	return a ? add(a.center, mul([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul(sub$1(w.b, w.a), t));
-}
-/** Exact unit tangent along the centerline, also at circular wall endpoints. */
-function wallTangent(w, s) {
-	const a = arc(w);
-	if (!a) return wallDir(w);
-	const angle = a.start + a.sweep * clamp(s / wallLength(w), 0, 1);
-	return mul([-Math.sin(angle), Math.cos(angle)], Math.sign(a.sweep));
-}
-function wallPath(w) {
-	if (!arc(w)) return [[...w.a], [...w.b]];
-	const len = wallLength(w), n = Math.max(2, Math.ceil(len / 150));
-	return Array.from({ length: n + 1 }, (_, i) => pointAt(w, len * i / n));
-}
-function projectToWall(w, p) {
-	const a = arc(w), len = wallLength(w);
-	let s = clamp(dot$2(sub$1(p, w.a), wallDir(w)), 0, len);
-	if (a) {
-		const angle = Math.atan2(p[1] - a.center[1], p[0] - a.center[0]);
-		const candidates = [0, len];
-		for (let k = -2; k <= 2; k++) {
-			const t = (angle - a.start + k * Math.PI * 2) / a.sweep;
-			if (t >= 0 && t <= 1) candidates.push(t * len);
-		}
-		s = candidates.reduce((best, cur) => distance$1(pointAt(w, cur), p) < distance$1(pointAt(w, best), p) ? cur : best);
-	}
-	const point = pointAt(w, s);
-	return {
-		s,
-		dist: distance$1(point, p),
-		point
-	};
-}
-/** Slice preserves the exact circular arc, including its signed sagitta. */
-function sliceWall(w, from, to) {
-	const a = arc(w), len = wallLength(w), result = {
-		...w,
-		a: pointAt(w, from),
-		b: pointAt(w, to)
-	};
-	if (a) result.bulge = Math.sign(w.bulge) * a.radius * (1 - Math.cos(Math.abs(a.sweep) * (to - from) / len / 2));
-	return result;
-}
-function wallFootprint(w) {
-	const path = wallPath(w), a = arc(w), half = w.thickness / 2;
-	const normals = path.map((p) => a ? mul(sub$1(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
-	return [...path.map((p, i) => add(p, mul(normals[i], half))), ...path.map((p, i) => add(p, mul(normals[i], -half))).reverse()];
-}
-function beamFootprint(b) {
-	return wallFootprint({
-		...b,
-		thickness: b.width,
-		kind: "partition"
-	});
-}
-function openingSpan(plan, o) {
-	const wall = plan.walls.find((w) => w.id === o.wall);
-	if (!wall) throw new Error(`洞口 ${o.id} 的宿主墙 ${o.wall} 不存在`);
-	const startTangent = wallTangent(wall, o.offset), endTangent = wallTangent(wall, o.offset + o.width);
-	const dir = wallTangent(wall, o.offset + o.width / 2), normal = [-dir[1], dir[0]];
-	return {
-		a: pointAt(wall, o.offset),
-		b: pointAt(wall, o.offset + o.width),
-		center: pointAt(wall, o.offset + o.width / 2),
-		dir,
-		normal,
-		wall,
-		path: wallPath(sliceWall(wall, o.offset, o.offset + o.width)),
-		startTangent,
-		endTangent,
-		startNormal: [-startTangent[1], startTangent[0]],
-		endNormal: [-endTangent[1], endTangent[0]]
-	};
-}
-function openingFootprint(plan, o) {
-	const { wall } = openingSpan(plan, o);
-	return wallFootprint(sliceWall(wall, o.offset, o.offset + o.width));
-}
-function polygonArea(poly) {
-	return Math.abs(poly.reduce((a, p, i) => {
-		const q = poly[(i + 1) % poly.length];
-		return a + p[0] * q[1] - q[0] * p[1];
-	}, 0)) / 2;
-}
-function pointInPolygon(p, poly) {
-	let inside = false;
-	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-		const a = poly[j], b = poly[i], d = sub$1(b, a);
-		if (distance$1(p, add(a, mul(d, clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), 0, 1)))) < 1e-7) return true;
-		if (a[1] > p[1] !== b[1] > p[1] && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
-	}
-	return inside;
-}
-function labelPoint(poly) {
-	if (!poly.length) return [0, 0];
-	const ys = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
-	let best = [...poly[0]], width = -1;
-	for (let k = 1; k < ys.length; k++) {
-		const y = (ys[k - 1] + ys[k]) / 2, xs = [];
-		poly.forEach((a, i) => {
-			const b = poly[(i + 1) % poly.length];
-			if (a[1] > y !== b[1] > y) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
-		});
-		xs.sort((a, b) => a - b);
-		for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > width) {
-			width = xs[i + 1] - xs[i];
-			best = [(xs[i] + xs[i + 1]) / 2, y];
-		}
-	}
-	return best;
-}
-function planBounds(plan) {
-	const pts = [
-		...plan.walls.flatMap(wallFootprint),
-		...plan.rooms.flatMap((r) => r.poly),
-		...plan.beams.flatMap(beamFootprint),
-		...(plan.columns ?? []).flatMap(columnFootprint),
-		...[
-			...plan.shafts ?? [],
-			...plan.stairs ?? [],
-			...plan.voids ?? []
-		].flatMap((e) => e.poly)
-	];
-	if (!pts.length) return null;
-	return [
-		Math.min(...pts.map((p) => p[0])),
-		Math.min(...pts.map((p) => p[1])),
-		Math.max(...pts.map((p) => p[0])),
-		Math.max(...pts.map((p) => p[1]))
-	];
-}
-/** positive = n side, negative = -n side. Multiple rooms can adjoin one merged wall. */
-function roomsBesideWall(plan, wallId) {
-	const wall = plan.walls.find((w) => w.id === wallId), result = {
-		positive: [],
-		negative: []
-	};
-	if (!wall) return result;
-	const path = wallPath(wall);
-	for (const room of plan.rooms.filter((r) => levelOf(plan, r).id === levelOf(plan, wall).id)) for (let i = 1; i < path.length; i++) {
-		const a = path[i - 1], b = path[i], n = wallNormal({
-			a,
-			b
-		}), d = sub$1(b, a);
-		const ts = [
-			.1,
-			.5,
-			.9,
-			...room.poly.map((p) => clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), .001, .999))
-		];
-		for (const side of ["positive", "negative"]) if (!result[side].includes(room) && ts.some((t) => pointInPolygon(add(add(a, mul(d, t)), mul(n, (wall.thickness / 2 + 1) * (side === "positive" ? 1 : -1))), room.poly))) result[side].push(room);
-	}
-	return result;
-}
-function roomCeiling(plan, room) {
-	return room.ceiling ?? levelCeiling(plan, levelOf(plan, room).id) ?? DEFAULTS.ceiling;
-}
-function effectiveWallHeight(plan, w) {
-	if (w.height !== void 0) return w.height;
-	const sides = roomsBesideWall(plan, w.id), rooms = [...sides.positive, ...sides.negative];
-	return rooms.length ? Math.max(...rooms.map((r) => roomCeiling(plan, r))) : levelCeiling(plan, levelOf(plan, w).id);
-}
-function ceilingAt(plan, p, levelId = levelsOf(plan)[0].id) {
-	const rooms = plan.rooms.filter((r) => levelOf(plan, r).id === levelId && pointInPolygon(p, r.poly));
-	return rooms.length ? Math.max(...rooms.map((r) => roomCeiling(plan, r))) : levelCeiling(plan, levelId);
-}
-function columnFootprint(c) {
-	const theta = (c.rotation ?? 0) * Math.PI / 180, co = Math.cos(theta), si = Math.sin(theta);
-	return (c.shape === "round" ? Array.from({ length: 64 }, (_, i) => [Math.cos(i * Math.PI / 32) * c.size[0] / 2, Math.sin(i * Math.PI / 32) * c.size[0] / 2]) : [
-		[-c.size[0] / 2, -c.size[1] / 2],
-		[c.size[0] / 2, -c.size[1] / 2],
-		[c.size[0] / 2, c.size[1] / 2],
-		[-c.size[0] / 2, c.size[1] / 2]
-	]).map(([x, y]) => add(c.center, [x * co - y * si, x * si + y * co]));
-}
-// src/core/protection.ts
-/** Runtime guard also catches a malformed/forward-compatible Change targeting a shaft. */
-function shaftRemovalError(plan, target) {
-	return plan.shafts?.some((s) => s.id === target) ? "管道井 / 烟道不能拆" : void 0;
-}
-// src/core/mirror-frame.ts
-/** Replayed plans retain their source frame so mirror and replay use the same axis. */
-function mirrorBounds(plan) {
-	const stored = plan.legacy?.__structureReplayFrame;
-	if (Array.isArray(stored) && stored.length === 4 && stored.every((v) => typeof v === "number" && Number.isFinite(v))) return stored;
-	const bounds = planBounds(plan);
-	if (bounds) return bounds;
-	const points = plan.changes.flatMap((c) => {
-		const d = c.data ?? {};
-		return [
-			d.a,
-			d.b,
-			...Array.isArray(d.poly) ? d.poly : []
-		].filter((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && Number.isFinite(v)));
-	});
-	return points.length ? [
-		Math.min(...points.map((p) => p[0])),
-		Math.min(...points.map((p) => p[1])),
-		Math.max(...points.map((p) => p[0])),
-		Math.max(...points.map((p) => p[1]))
-	] : null;
-}
 // node_modules/splaytree/dist/splaytree.js
 var f = class {
 	constructor(t, e) {
@@ -2101,6 +1755,698 @@ var index = {
 	xor,
 	difference: difference$1
 };
+// src/core/decor/svg-path.ts
+var arity = {
+	M: 2,
+	L: 2,
+	H: 1,
+	V: 1,
+	C: 6,
+	S: 4,
+	Q: 4,
+	T: 2,
+	A: 7,
+	Z: 0
+};
+/** SVG path data only. Errors identify the expanded command, including implicit repeats. */
+function parsePath(d) {
+	const commands = [];
+	const fail = (message) => ({ error: `第 ${commands.length + 1} 个命令：${message}` });
+	if (typeof d !== "string" || new TextEncoder().encode(d).length > 8192) return fail("路径必须是最多 8 KB 的 d 字符串");
+	let i = 0, command = "";
+	const ws = () => {
+		while (/\s/.test(d[i] ?? "") && i < d.length) i++;
+	};
+	ws();
+	while (i < d.length) {
+		const explicit = /[a-z]/i.test(d[i]);
+		if (explicit) {
+			command = d[i++];
+			if (!(command.toUpperCase() in arity)) return fail(`不支持字符 ${command}`);
+		} else if (!command || command.toUpperCase() === "Z") return fail("需要命令字母");
+		const upper = command.toUpperCase(), n = arity[upper], values = [];
+		if (!commands.length && upper !== "M") return fail("必须以 M 开始");
+		for (let j = 0; j < n; j++) {
+			ws();
+			if (d[i] === ",") {
+				if (j === 0 && explicit) return fail("命令后不能直接跟逗号");
+				i++;
+				ws();
+			}
+			if (upper === "A" && (j === 3 || j === 4)) {
+				if (!/[01]/.test(d[i] ?? "") || i >= d.length) return fail("圆弧标志必须是 0 或 1");
+				values.push(Number(d[i++]));
+				continue;
+			}
+			const m = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(d.slice(i));
+			if (!m || !Number.isFinite(Number(m[0]))) return fail(`参数 ${j + 1} 需要有限数值`);
+			values.push(Number(m[0]));
+			i += m[0].length;
+		}
+		if (upper === "A" && (values[0] < 0 || values[1] < 0)) return fail("圆弧半径不能为负");
+		commands.push({
+			command,
+			values
+		});
+		if (upper === "M") command = command === "m" ? "l" : "L";
+		ws();
+		if (d[i] === ",") {
+			if (upper === "Z") return fail("Z 后不能跟逗号");
+			i++;
+			ws();
+			if (i === d.length || /[a-z,]/i.test(d[i])) return fail("逗号后需要坐标");
+		}
+	}
+	return commands.length ? { commands } : fail("路径不能为空");
+}
+var mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+var dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function flatten(d, tol, limit) {
+	const parsed = parsePath(d);
+	if (parsed.error !== void 0) throw new Error(parsed.error);
+	if (!Number.isFinite(tol) || tol <= 0) throw new Error("tol 必须为正数");
+	const paths = [];
+	let p = [0, 0], start = p, control = p, previous = "", path;
+	const push = (v) => {
+		path.points.push(v);
+		p = v;
+	};
+	const curve = (a, b, c, end, depth = 0) => {
+		if (depth >= 10 || dist(a, b) + dist(b, c) + dist(c, end) - dist(a, end) <= tol / 4 && Math.max(dist(b, mix(a, end, 1 / 3)), dist(c, mix(a, end, 2 / 3))) <= tol) {
+			push(end);
+			return;
+		}
+		const ab = mix(a, b, .5), bc = mix(b, c, .5), ce = mix(c, end, .5), abc = mix(ab, bc, .5), bce = mix(bc, ce, .5), mid = mix(abc, bce, .5);
+		curve(a, ab, abc, mid, depth + 1);
+		curve(mid, bce, ce, end, depth + 1);
+	};
+	for (const { command, values: v } of parsed.commands) {
+		const k = command.toUpperCase(), relative = command !== k, origin = p;
+		const xy = (i) => [v[i] + (relative ? origin[0] : 0), v[i + 1] + (relative ? origin[1] : 0)];
+		if (k === "M") {
+			p = xy(0);
+			start = p;
+			path = {
+				points: [p],
+				closed: false
+			};
+			paths.push(path);
+		} else if (k === "Z") {
+			path.closed = true;
+			p = start;
+		} else {
+			if (path.closed) {
+				path = {
+					points: [p],
+					closed: false
+				};
+				paths.push(path);
+				start = p;
+			}
+			if (k === "L") push(xy(0));
+			else if (k === "H") push([v[0] + (relative ? p[0] : 0), p[1]]);
+			else if (k === "V") push([p[0], v[0] + (relative ? p[1] : 0)]);
+			else if (k === "C" || k === "S") {
+				const b = k === "C" ? xy(0) : ["C", "S"].includes(previous) ? [2 * p[0] - control[0], 2 * p[1] - control[1]] : p;
+				const c = xy(k === "C" ? 2 : 0), end = xy(k === "C" ? 4 : 2);
+				curve(p, b, c, end);
+				control = c;
+			} else if (k === "Q" || k === "T") {
+				const c = k === "Q" ? xy(0) : ["Q", "T"].includes(previous) ? [2 * p[0] - control[0], 2 * p[1] - control[1]] : p;
+				const end = xy(k === "Q" ? 2 : 0);
+				curve(p, mix(p, c, 2 / 3), mix(end, c, 2 / 3), end);
+				control = c;
+			} else if (k === "A") {
+				const end = xy(5), phi = v[2] * Math.PI / 180, co = Math.cos(phi), si = Math.sin(phi);
+				let rx = v[0], ry = v[1];
+				if (!rx || !ry) push(end);
+				else if (dist(p, end) > 1e-10) {
+					const dx = (p[0] - end[0]) / 2, dy = (p[1] - end[1]) / 2, x = co * dx + si * dy, y = -si * dx + co * dy;
+					const scale = Math.sqrt(x * x / (rx * rx) + y * y / (ry * ry));
+					if (scale > 1) {
+						rx *= scale;
+						ry *= scale;
+					}
+					const factor = (v[3] === v[4] ? -1 : 1) * Math.sqrt(Math.max(0, (rx * rx * ry * ry - rx * rx * y * y - ry * ry * x * x) / (rx * rx * y * y + ry * ry * x * x)));
+					const cx = factor * rx * y / ry, cy = -factor * ry * x / rx, center = [co * cx - si * cy + (p[0] + end[0]) / 2, si * cx + co * cy + (p[1] + end[1]) / 2];
+					const a = Math.atan2((y - cy) / ry, (x - cx) / rx);
+					let delta = Math.atan2((-y - cy) / ry, (-x - cx) / rx) - a;
+					if (!v[4] && delta > 0) delta -= 2 * Math.PI;
+					if (v[4] && delta < 0) delta += 2 * Math.PI;
+					const steps = Math.min(255, Math.max(1, Math.ceil(Math.abs(delta) / (2 * Math.acos(Math.max(-1, 1 - tol / Math.max(rx, ry)))))));
+					for (let j = 1; j <= steps; j++) {
+						const t = a + delta * j / steps;
+						push(j === steps ? end : [center[0] + co * rx * Math.cos(t) - si * ry * Math.sin(t), center[1] + si * rx * Math.cos(t) + co * ry * Math.sin(t)]);
+					}
+				}
+			}
+		}
+		previous = k;
+	}
+	for (const sub of paths) if (sub.points.length > limit) {
+		const points = sub.points;
+		sub.points = Array.from({ length: limit }, (_, i) => points[Math.round(i * (points.length - 1) / (limit - 1))]);
+	}
+	return paths;
+}
+function flattenPath(d, tol = 3) {
+	return flatten(d, tol, 256);
+}
+function pathRegion(d) {
+	const rings = flattenPath(d).filter((p) => p.points.length >= 3).map((p) => [p.points]);
+	return rings.length ? index.xor(rings[0], ...rings.slice(1)) : [];
+}
+function pathBounds(d) {
+	return flatten(d, .1, Infinity).flatMap((p) => p.points).reduce((b, [x, y]) => [
+		Math.min(b[0], x),
+		Math.min(b[1], y),
+		Math.max(b[2], x),
+		Math.max(b[3], y)
+	], [
+		Infinity,
+		Infinity,
+		-Infinity,
+		-Infinity
+	]);
+}
+// src/core/decor/components.ts
+var COMPONENT_CATEGORIES = {
+	furniture: "家具",
+	appliance: "家电",
+	sanitary: "卫浴",
+	lighting: "灯具",
+	ceiling: "吊顶",
+	plant: "绿植",
+	soft: "软装",
+	storage: "收纳",
+	other: "其他"
+};
+var isCustomType = (type) => typeof type === "string" && type.startsWith("custom:");
+var componentOf = (decor, type) => isCustomType(type) ? decor?.components?.find((c) => c.id === type.slice(7)) : void 0;
+var rect = (x0, y0, x1, y1) => [[[
+	[x0, y0],
+	[x1, y0],
+	[x1, y1],
+	[x0, y1],
+	[x0, y0]
+]]];
+function componentPrisms(def) {
+	const result = [];
+	def.parts.forEach((p, part) => {
+		const push = (polygons, z0, z1) => {
+			if (!polygons.length) return;
+			if (result.length >= 400) throw new Error(`part ${part + 1}：定义展开超过 400 个棱柱，请简化路径或部件`);
+			result.push({
+				polygons,
+				z0,
+				z1,
+				part,
+				...p.color ? { color: p.color } : {},
+				...p.material ? { material: p.material } : {}
+			});
+		};
+		if (p.kind === void 0 || p.kind === "extrude") {
+			push(pathRegion(p.outline), ...p.z);
+			return;
+		}
+		if (p.kind !== "side" && p.kind !== "revolve") throw new Error(`part ${part + 1}：未知 kind`);
+		const paths = flattenPath(p.profile), ys = [...new Set(paths.flatMap((s) => s.points.map((v) => v[1])))].sort((a, b) => a - b);
+		const bands = !paths.some((s) => s.points.some((a, i) => {
+			const b = s.points[(i + 1) % s.points.length];
+			return Math.abs(a[0] - b[0]) > 1e-6 && Math.abs(a[1] - b[1]) > 1e-6;
+		})) && ys.length <= 25 ? ys : Array.from({ length: 25 }, (_, i) => ys[0] + (ys.at(-1) - ys[0]) * i / 24);
+		for (let i = 1; i < bands.length; i++) {
+			const y = (bands[i - 1] + bands[i]) / 2, xs = [];
+			for (const { points } of paths) points.forEach((a, j) => {
+				const b = points[(j + 1) % points.length];
+				if (a[1] <= y && y < b[1] || b[1] <= y && y < a[1]) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+			});
+			xs.sort((a, b) => a - b);
+			for (let j = 1; j < xs.length; j += 2) {
+				const lo = xs[j - 1], hi = xs[j];
+				if (hi - lo < 1e-8) continue;
+				let polygons;
+				if (p.kind === "side") polygons = p.along === "width" ? rect(p.span[0], lo, p.span[1], hi) : rect(lo, p.span[0], hi, p.span[1]);
+				else {
+					const center = p.center ?? [def.size[0] / 2, def.size[1] / 2];
+					const circle = (r) => Array.from({ length: 33 }, (_, k) => [center[0] + r * Math.cos(2 * Math.PI * k / 32), center[1] + r * Math.sin(2 * Math.PI * k / 32)]);
+					polygons = [[circle(hi), ...lo > 1e-6 ? [circle(lo).reverse()] : []]];
+				}
+				push(polygons, def.height - bands[i], def.height - bands[i - 1]);
+			}
+		}
+	});
+	return result;
+}
+/** Shared SVG canvas rules for component projections and door fronts; all dimensions mm. */
+function validateComponentPaths(paths, width, height, fail) {
+	if (!Array.isArray(paths)) {
+		fail("", "必须为路径数组");
+		return;
+	}
+	paths.forEach((p, i) => {
+		const field = ` ${i + 1}`;
+		if (!p || typeof p !== "object") {
+			fail(field, "需要路径对象");
+			return;
+		}
+		try {
+			const b = pathBounds(p.d);
+			if (b[0] < -1 || b[1] < -1 || b[2] > width + 1 || b[3] > height + 1) fail(`${field}.d`, `超出 ${width} × ${height} mm 画布（容差 1 mm）`);
+		} catch (e) {
+			fail(`${field}.d`, e.message);
+		}
+		if (p.style !== void 0 && ![
+			"outline",
+			"detail",
+			"dashed"
+		].includes(p.style)) fail(`${field}.style`, "未知路径样式");
+		for (const key of ["fill", "stroke"]) if (p[key] !== void 0 && p[key] !== "none" && !(typeof p[key] === "string" && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(p[key]))) fail(`${field}.${key}`, "需要 #RGB / #RRGGBB 或 none");
+	});
+}
+/** Defensive validation for definitions from JSON; dimensions here are always mm. */
+function validateComponent(def, materials) {
+	const issues = [], fail = (field, message) => issues.push({
+		id: def?.id ?? "components",
+		code: "component-invalid",
+		level: "error",
+		text: `${field}：${message}`
+	});
+	const num = (v) => typeof v === "number" && Number.isFinite(v);
+	const pair = (v) => Array.isArray(v) && v.length === 2 && v.every(num);
+	const color = (v) => typeof v === "string" && /^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(v);
+	if (!def || typeof def !== "object") {
+		fail("定义", "必须是对象");
+		return issues;
+	}
+	if (def.look !== void 0 && (typeof def.look !== "string" || [...def.look].length > 300)) issues.push({
+		id: def.id,
+		code: "invalid",
+		level: "error",
+		text: "look 必须是最多 300 字的字符串"
+	});
+	if (!def.id || typeof def.id !== "string" || !def.name || typeof def.name !== "string") fail("id/name", "需要非空字符串");
+	if (!Object.hasOwn(COMPONENT_CATEGORIES, def.category)) fail("category", "未知类别");
+	if (def.category === "other" && (typeof def.label !== "string" || !def.label.trim())) fail("label", "other 必须写类别的白话说明");
+	if (!pair(def.size) || def.size.some((v) => v <= 0) || !num(def.height) || def.height <= 0) {
+		fail("size/height", "需要正数 mm");
+		return issues;
+	}
+	const path = (d, field, w, h, region = false) => {
+		try {
+			const b = pathBounds(d);
+			if (b[0] < -1 || b[1] < -1 || b[2] > w + 1 || b[3] > h + 1) fail(field, `超出 ${w} × ${h} mm 画布（容差 1 mm）`);
+			if (region && !pathRegion(d).length) fail(field, "必须围出非空面积");
+		} catch (e) {
+			fail(field, e.message);
+		}
+	};
+	for (const view of ["plan", "front"]) if (def[view] !== void 0) validateComponentPaths(def[view], def.size[0], view === "plan" ? def.size[1] : def.height, (field, message) => fail(`${view}${field}`, message));
+	if (!Array.isArray(def.parts) || !def.parts.length) {
+		fail("parts", "至少需要一个部件");
+		return issues;
+	}
+	def.parts.forEach((p, i) => {
+		const at = `part ${i + 1}`;
+		if (!p || typeof p !== "object") {
+			fail(at, "需要对象");
+			return;
+		}
+		if (p.color !== void 0 && !color(p.color)) fail(`${at}.color`, "需要 #RGB / #RRGGBB");
+		if (p.material !== void 0 && !materials.has(p.material)) fail(`${at}.material`, `材料 ${p.material} 不存在`);
+		if (p.kind === void 0 || p.kind === "extrude") {
+			path(p.outline, `${at}.outline`, ...def.size, true);
+			if (!pair(p.z) || p.z[0] < 0 || p.z[1] <= p.z[0] || p.z[1] > def.height) fail(`${at}.z`, "需要 0 ≤ z0 < z1 ≤ height（从构件底向上 mm）");
+		} else if (p.kind === "side") {
+			if (!["width", "depth"].includes(p.along)) fail(`${at}.along`, "需要 width 或 depth");
+			const w = def.size[p.along === "width" ? 1 : 0], span = def.size[p.along === "width" ? 0 : 1];
+			path(p.profile, `${at}.profile`, w, def.height, true);
+			if (!pair(p.span) || p.span[0] < -1 || p.span[1] <= p.span[0] || p.span[1] > span + 1) fail(`${at}.span`, "越界或不是递增区间");
+		} else if (p.kind === "revolve") {
+			const c = p.center ?? [def.size[0] / 2, def.size[1] / 2];
+			if (!pair(c)) {
+				fail(`${at}.center`, "需要 [x,y]");
+				return;
+			}
+			path(p.profile, `${at}.profile`, Math.min(c[0], c[1], def.size[0] - c[0], def.size[1] - c[1]), def.height, true);
+			try {
+				if (pathBounds(p.profile)[0] < 0) fail(`${at}.profile`, "旋转半径不能为负");
+			} catch {}
+		} else fail(`${at}.kind`, "未知部件类型");
+	});
+	if (!issues.length) try {
+		if (!componentPrisms(def).length) fail("parts", "未展开出实体");
+	} catch (e) {
+		fail("parts", e.message);
+	}
+	return issues;
+}
+// src/core/types.ts
+/** 新建构件时的默认值（mm / m） */
+var DEFAULTS = {
+	ceiling: 2.8,
+	thickness: {
+		exterior: 240,
+		bearing: 200,
+		partition: 120,
+		glass: 80,
+		half: 120,
+		"half-glass": 120
+	},
+	lowHeight: 1,
+	opening: {
+		door: {
+			width: 900,
+			sill: 0,
+			head: 2.1
+		},
+		sliding: {
+			width: 1600,
+			sill: 0,
+			head: 2.2
+		},
+		doorway: {
+			width: 900,
+			sill: 0,
+			head: 2.1
+		},
+		window: {
+			width: 1500,
+			sill: .9,
+			head: 2.4
+		},
+		"floor-window": {
+			width: 2400,
+			sill: .05,
+			head: 2.5
+		},
+		"bay-window": {
+			width: 1800,
+			sill: .45,
+			head: 2.4
+		},
+		"open-balcony": {
+			width: 2400,
+			sill: 0,
+			head: 2.5
+		}
+	},
+	beam: {
+		width: 240,
+		bottom: 2.5
+	}
+};
+/** 拆除或开洞时需要用户二次确认的墙类型；承重柱（Column.kind = bearing）同样受保护，管道井不可拆（拆除记录一律报 error） */
+var PROTECTED_KINDS = ["bearing", "exterior"];
+// src/core/levels.ts
+/** Array order is floor order; validatePlan requires strictly increasing elevations. */
+function levelsOf(plan) {
+	return plan.levels?.length ? plan.levels : [{
+		id: "L1",
+		name: "1F",
+		elevation: 0
+	}];
+}
+function levelOf(plan, element) {
+	const levels = levelsOf(plan);
+	const id = "wall" in element ? plan.walls.find((w) => w.id === element.wall)?.level : element.level;
+	return levels.find((l) => l.id === id) ?? levels[0];
+}
+function levelCeiling(plan, levelId) {
+	return levelsOf(plan).find((l) => l.id === levelId)?.ceiling ?? plan.ceiling;
+}
+/** Enables additive result metadata only for plans that actually use the extension. */
+function hasLevelData(plan) {
+	return !!(plan.levels?.length || plan.columns?.length || plan.shafts?.length || plan.stairs?.length || plan.voids?.length);
+}
+/** Read-only view: retains levels so omitted level fields still refer to the original first floor. */
+function onLevel(plan, levelId) {
+	const matches = (e) => levelOf(plan, e).id === levelId;
+	return {
+		...plan,
+		ceiling: levelCeiling(plan, levelId),
+		walls: plan.walls.filter(matches),
+		openings: plan.openings.filter(matches),
+		beams: plan.beams.filter(matches),
+		rooms: plan.rooms.filter(matches),
+		questions: plan.questions.filter(matches),
+		...plan.columns ? { columns: plan.columns.filter(matches) } : {},
+		...plan.shafts ? { shafts: plan.shafts.filter(matches) } : {},
+		...plan.stairs ? { stairs: plan.stairs.filter(matches) } : {},
+		...plan.voids ? { voids: plan.voids.filter(matches) } : {},
+		...plan.levelUnderlays?.[levelId] ? { underlay: plan.levelUnderlays[levelId] } : {}
+	};
+}
+function assertLevel(plan, level) {
+	if (level !== void 0 && !levelsOf(plan).some((l) => l.id === level)) throw new Error(`未知楼层：${level}`);
+}
+var add = (a, b) => [a[0] + b[0], a[1] + b[1]];
+var sub$1 = (a, b) => [a[0] - b[0], a[1] - b[1]];
+var mul = (a, s) => [a[0] * s, a[1] * s];
+var dot$2 = (a, b) => a[0] * b[0] + a[1] * b[1];
+var distance$1 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function wallDir(w) {
+	const d = sub$1(w.b, w.a);
+	return mul(d, 1 / (Math.hypot(...d) || 1));
+}
+function wallNormal(w) {
+	const d = wallDir(w);
+	return [-d[1], d[0]];
+}
+function arc(w) {
+	const chord = distance$1(w.a, w.b), sag = w.bulge || 0;
+	if (chord < 1e-7 || Math.abs(sag) < 1e-7) return null;
+	const c = sag / 2 - chord * chord / (8 * sag);
+	const center = add(mul(add(w.a, w.b), .5), mul(wallNormal(w), c));
+	return {
+		center,
+		radius: distance$1(center, w.a),
+		start: Math.atan2(w.a[1] - center[1], w.a[0] - center[0]),
+		sweep: -4 * Math.atan(2 * sag / chord)
+	};
+}
+/** Signed angle follows bulge (positive toward n), rather than mathematical sweep. */
+function arcParams(w) {
+	const a = arc(w);
+	return a ? {
+		radius: a.radius,
+		angle: -a.sweep * 180 / Math.PI,
+		sagitta: w.bulge,
+		center: a.center
+	} : null;
+}
+function wallLength(w) {
+	const a = arc(w);
+	return a ? a.radius * Math.abs(a.sweep) : distance$1(w.a, w.b);
+}
+function pointAt(w, s) {
+	const len = wallLength(w), t = len > 1e-7 ? clamp(s / len, 0, 1) : 0;
+	if (t === 0) return [...w.a];
+	if (t === 1) return [...w.b];
+	const a = arc(w);
+	return a ? add(a.center, mul([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul(sub$1(w.b, w.a), t));
+}
+/** Exact unit tangent along the centerline, also at circular wall endpoints. */
+function wallTangent(w, s) {
+	const a = arc(w);
+	if (!a) return wallDir(w);
+	const angle = a.start + a.sweep * clamp(s / wallLength(w), 0, 1);
+	return mul([-Math.sin(angle), Math.cos(angle)], Math.sign(a.sweep));
+}
+function wallPath(w) {
+	if (!arc(w)) return [[...w.a], [...w.b]];
+	const len = wallLength(w), n = Math.max(2, Math.ceil(len / 150));
+	return Array.from({ length: n + 1 }, (_, i) => pointAt(w, len * i / n));
+}
+function projectToWall(w, p) {
+	const a = arc(w), len = wallLength(w);
+	let s = clamp(dot$2(sub$1(p, w.a), wallDir(w)), 0, len);
+	if (a) {
+		const angle = Math.atan2(p[1] - a.center[1], p[0] - a.center[0]);
+		const candidates = [0, len];
+		for (let k = -2; k <= 2; k++) {
+			const t = (angle - a.start + k * Math.PI * 2) / a.sweep;
+			if (t >= 0 && t <= 1) candidates.push(t * len);
+		}
+		s = candidates.reduce((best, cur) => distance$1(pointAt(w, cur), p) < distance$1(pointAt(w, best), p) ? cur : best);
+	}
+	const point = pointAt(w, s);
+	return {
+		s,
+		dist: distance$1(point, p),
+		point
+	};
+}
+/** Slice preserves the exact circular arc, including its signed sagitta. */
+function sliceWall(w, from, to) {
+	const a = arc(w), len = wallLength(w), result = {
+		...w,
+		a: pointAt(w, from),
+		b: pointAt(w, to)
+	};
+	if (a) result.bulge = Math.sign(w.bulge) * a.radius * (1 - Math.cos(Math.abs(a.sweep) * (to - from) / len / 2));
+	return result;
+}
+function wallFootprint(w) {
+	const path = wallPath(w), a = arc(w), half = w.thickness / 2;
+	const normals = path.map((p) => a ? mul(sub$1(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
+	return [...path.map((p, i) => add(p, mul(normals[i], half))), ...path.map((p, i) => add(p, mul(normals[i], -half))).reverse()];
+}
+function beamFootprint(b) {
+	return wallFootprint({
+		...b,
+		thickness: b.width,
+		kind: "partition"
+	});
+}
+function openingSpan(plan, o) {
+	const wall = plan.walls.find((w) => w.id === o.wall);
+	if (!wall) throw new Error(`洞口 ${o.id} 的宿主墙 ${o.wall} 不存在`);
+	const startTangent = wallTangent(wall, o.offset), endTangent = wallTangent(wall, o.offset + o.width);
+	const dir = wallTangent(wall, o.offset + o.width / 2), normal = [-dir[1], dir[0]];
+	return {
+		a: pointAt(wall, o.offset),
+		b: pointAt(wall, o.offset + o.width),
+		center: pointAt(wall, o.offset + o.width / 2),
+		dir,
+		normal,
+		wall,
+		path: wallPath(sliceWall(wall, o.offset, o.offset + o.width)),
+		startTangent,
+		endTangent,
+		startNormal: [-startTangent[1], startTangent[0]],
+		endNormal: [-endTangent[1], endTangent[0]]
+	};
+}
+function openingFootprint(plan, o) {
+	const { wall } = openingSpan(plan, o);
+	return wallFootprint(sliceWall(wall, o.offset, o.offset + o.width));
+}
+function polygonArea(poly) {
+	return Math.abs(poly.reduce((a, p, i) => {
+		const q = poly[(i + 1) % poly.length];
+		return a + p[0] * q[1] - q[0] * p[1];
+	}, 0)) / 2;
+}
+function pointInPolygon(p, poly) {
+	let inside = false;
+	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+		const a = poly[j], b = poly[i], d = sub$1(b, a);
+		if (distance$1(p, add(a, mul(d, clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), 0, 1)))) < 1e-7) return true;
+		if (a[1] > p[1] !== b[1] > p[1] && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
+	}
+	return inside;
+}
+function labelPoint(poly) {
+	if (!poly.length) return [0, 0];
+	const ys = [...new Set(poly.map((p) => p[1]))].sort((a, b) => a - b);
+	let best = [...poly[0]], width = -1;
+	for (let k = 1; k < ys.length; k++) {
+		const y = (ys[k - 1] + ys[k]) / 2, xs = [];
+		poly.forEach((a, i) => {
+			const b = poly[(i + 1) % poly.length];
+			if (a[1] > y !== b[1] > y) xs.push(a[0] + (y - a[1]) * (b[0] - a[0]) / (b[1] - a[1]));
+		});
+		xs.sort((a, b) => a - b);
+		for (let i = 0; i + 1 < xs.length; i += 2) if (xs[i + 1] - xs[i] > width) {
+			width = xs[i + 1] - xs[i];
+			best = [(xs[i] + xs[i + 1]) / 2, y];
+		}
+	}
+	return best;
+}
+function planBounds(plan) {
+	const pts = [
+		...plan.walls.flatMap(wallFootprint),
+		...plan.rooms.flatMap((r) => r.poly),
+		...plan.beams.flatMap(beamFootprint),
+		...(plan.columns ?? []).flatMap(columnFootprint),
+		...[
+			...plan.shafts ?? [],
+			...plan.stairs ?? [],
+			...plan.voids ?? []
+		].flatMap((e) => e.poly)
+	];
+	if (!pts.length) return null;
+	return [
+		Math.min(...pts.map((p) => p[0])),
+		Math.min(...pts.map((p) => p[1])),
+		Math.max(...pts.map((p) => p[0])),
+		Math.max(...pts.map((p) => p[1]))
+	];
+}
+/** positive = n side, negative = -n side. Multiple rooms can adjoin one merged wall. */
+function roomsBesideWall(plan, wallId) {
+	const wall = plan.walls.find((w) => w.id === wallId), result = {
+		positive: [],
+		negative: []
+	};
+	if (!wall) return result;
+	const path = wallPath(wall);
+	for (const room of plan.rooms.filter((r) => levelOf(plan, r).id === levelOf(plan, wall).id)) for (let i = 1; i < path.length; i++) {
+		const a = path[i - 1], b = path[i], n = wallNormal({
+			a,
+			b
+		}), d = sub$1(b, a);
+		const ts = [
+			.1,
+			.5,
+			.9,
+			...room.poly.map((p) => clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), .001, .999))
+		];
+		for (const side of ["positive", "negative"]) if (!result[side].includes(room) && ts.some((t) => pointInPolygon(add(add(a, mul(d, t)), mul(n, (wall.thickness / 2 + 1) * (side === "positive" ? 1 : -1))), room.poly))) result[side].push(room);
+	}
+	return result;
+}
+function roomCeiling(plan, room) {
+	return room.ceiling ?? levelCeiling(plan, levelOf(plan, room).id) ?? DEFAULTS.ceiling;
+}
+function effectiveWallHeight(plan, w) {
+	if (w.height !== void 0) return w.height;
+	const sides = roomsBesideWall(plan, w.id), rooms = [...sides.positive, ...sides.negative];
+	return rooms.length ? Math.max(...rooms.map((r) => roomCeiling(plan, r))) : levelCeiling(plan, levelOf(plan, w).id);
+}
+function ceilingAt(plan, p, levelId = levelsOf(plan)[0].id) {
+	const rooms = plan.rooms.filter((r) => levelOf(plan, r).id === levelId && pointInPolygon(p, r.poly));
+	return rooms.length ? Math.max(...rooms.map((r) => roomCeiling(plan, r))) : levelCeiling(plan, levelId);
+}
+function columnFootprint(c) {
+	const theta = (c.rotation ?? 0) * Math.PI / 180, co = Math.cos(theta), si = Math.sin(theta);
+	return (c.shape === "round" ? Array.from({ length: 64 }, (_, i) => [Math.cos(i * Math.PI / 32) * c.size[0] / 2, Math.sin(i * Math.PI / 32) * c.size[0] / 2]) : [
+		[-c.size[0] / 2, -c.size[1] / 2],
+		[c.size[0] / 2, -c.size[1] / 2],
+		[c.size[0] / 2, c.size[1] / 2],
+		[-c.size[0] / 2, c.size[1] / 2]
+	]).map(([x, y]) => add(c.center, [x * co - y * si, x * si + y * co]));
+}
+// src/core/protection.ts
+/** Runtime guard also catches a malformed/forward-compatible Change targeting a shaft. */
+function shaftRemovalError(plan, target) {
+	return plan.shafts?.some((s) => s.id === target) ? "管道井 / 烟道不能拆" : void 0;
+}
+// src/core/mirror-frame.ts
+/** Replayed plans retain their source frame so mirror and replay use the same axis. */
+function mirrorBounds(plan) {
+	const stored = plan.legacy?.__structureReplayFrame;
+	if (Array.isArray(stored) && stored.length === 4 && stored.every((v) => typeof v === "number" && Number.isFinite(v))) return stored;
+	const bounds = planBounds(plan);
+	if (bounds) return bounds;
+	const points = plan.changes.flatMap((c) => {
+		const d = c.data ?? {};
+		return [
+			d.a,
+			d.b,
+			...Array.isArray(d.poly) ? d.poly : []
+		].filter((p) => Array.isArray(p) && p.length === 2 && p.every((v) => typeof v === "number" && Number.isFinite(v)));
+	});
+	return points.length ? [
+		Math.min(...points.map((p) => p[0])),
+		Math.min(...points.map((p) => p[1])),
+		Math.max(...points.map((p) => p[0])),
+		Math.max(...points.map((p) => p[1]))
+	] : null;
+}
 var JOIN_TOLERANCE = 1;
 var cross$2 = (a, b) => a[0] * b[1] - a[1] * b[0];
 var union = (polys) => {
@@ -2318,7 +2664,7 @@ function faceFrame(plan, ref) {
 	if (axis.wall.bulge && "face" in ref) throw new DecorGeometryError("arc-unsupported", "弧墙暂只支持整面材质，造型和嵌入暂不支持");
 	const s = "s" in ref ? ref.s : faceExtent(plan, face), z = "z" in ref ? ref.z : [0, effectiveWallHeight(plan, axis.wall)];
 	const run = faceRun(plan, face);
-	if (s[0] < run[0].s[0] - 1e-5 || s[1] > run[run.length - 1].s[1] + 1e-5) throw new DecorGeometryError("host-cut", "超出连续墙面，跨墙的宿主链断了");
+	if (s[0] < run[0].s[0] - 1e-5 || s[1] > run[run.length - 1].s[1] + 1e-5) throw new DecorGeometryError("host-cut", `超出连续墙面：写的是 ${Math.round(s[0])}–${Math.round(s[1])} mm，这面墙连续的范围是 ${Math.round(run[0].s[0])}–${Math.round(run[run.length - 1].s[1])} mm`);
 	return {
 		...axis,
 		s,
@@ -2357,9 +2703,10 @@ function panelGeometry(plan, panel) {
 	let polygons = [[rectPoly(rect)]];
 	if (panel.type === "arch") {
 		const radius = Math.max(width / 2, panel.arch?.radius ?? width / 2), rise = radius - Math.sqrt(Math.max(0, radius * radius - width * width / 4)), base = span.z[1] - rise / 1e3;
+		const a0 = Math.acos(Math.min(1, width / 2 / radius)), off = radius * Math.sin(a0);
 		const curve = Array.from({ length: 65 }, (_, i) => {
-			const x = width * i / 64;
-			return [x, base + (Math.sqrt(Math.max(0, radius * radius - (x - width / 2) ** 2)) - Math.sqrt(Math.max(0, radius * radius - width * width / 4))) / 1e3];
+			const a = Math.PI - a0 - (Math.PI - 2 * a0) * i / 64;
+			return [i === 0 ? 0 : i === 64 ? width : width / 2 + radius * Math.cos(a), base + (radius * Math.sin(a) - off) / 1e3];
 		});
 		const hole = [
 			[0, span.z[0]],
@@ -2435,552 +2782,6 @@ function panelGeometry(plan, panel) {
 function panelTransform(plan, panel) {
 	const span = panelSpan(plan, panel), axis = faceAxis(plan, span.face), u0 = Math.min(...span.s.map(axis.toU));
 	return (u, depth) => axis.at(axis.toS(u0 + u), depth);
-}
-// src/core/decor/cabinets.ts
-/** Only the last width / top cell h may be omitted. No implicit rescaling of explicit dimensions. */
-function layoutCabinet(cab) {
-	const issues = [], invalid = (text) => issues.push({
-		id: cab.id,
-		code: "invalid",
-		level: "error",
-		text
-	});
-	const columns = [], cells = [], parts = [], cuts = [...cab.cuts ?? []];
-	const bodyBottom = cab.z[0] + (cab.plinth ?? 0), height = cab.z[1] - bodyBottom;
-	if (!(cab.width > 0 && cab.depth > 0 && height > 0) || !cab.columns.length) invalid("柜宽、柜深、柜高及分列必须有效");
-	let x = 0;
-	cab.columns.forEach((col, ci) => {
-		if (col.width === void 0 && ci !== cab.columns.length - 1) invalid("只有最后一列可以省略宽度");
-		const width = col.width ?? cab.width - x;
-		if (!(width > 0) || !col.cells.length) invalid("每列必须有正宽度和至少一个格子");
-		columns.push({
-			width,
-			u: [x, x + width]
-		});
-		let z = bodyBottom;
-		col.cells.forEach((cell, ri) => {
-			if (cell.h === void 0 && ri !== col.cells.length - 1) invalid("只有最上面一格可以省略高度");
-			const h = cell.h ?? cab.z[1] - z, rect = {
-				u: [x, x + width],
-				z: [z, z + h]
-			};
-			if (!(h > 0)) invalid("每格高度必须为正");
-			cells.push({
-				...rect,
-				column: ci,
-				row: ri,
-				cell,
-				type: cell.type,
-				pieces: subtractRects(rect, cab.cuts ?? [])
-			});
-			if (cell.type === "void") cuts.push({
-				...rect,
-				depth: cell.void?.depth ?? "through"
-			});
-			z += h;
-		});
-		if (Math.abs(z - cab.z[1]) > 1e-7) invalid("各格高度之和必须等于柜高减踢脚");
-		x += width;
-	});
-	if (Math.abs(x - cab.width) > 1e-5) invalid("各列宽度之和必须等于柜宽；改列宽时仅末列省略值承担余量");
-	for (const c of cuts) {
-		if (c.depth !== "through" && (!(c.depth > 0) || c.depth > cab.depth)) issues.push({
-			id: cab.id,
-			code: "host-depth",
-			level: "error",
-			text: `柜深只有 ${cab.depth} mm`
-		});
-		if (c.u[0] < 0 || c.u[1] > cab.width || c.z[0] < cab.z[0] || c.z[1] > cab.z[1] || c.u[1] <= c.u[0] || c.z[1] <= c.z[0]) invalid("柜体挖洞范围超出柜体");
-	}
-	const t = Math.min(18, cab.width / 4, cab.depth / 4), tm = t / 1e3;
-	const put = (kind, u, z, depth, material = cab.materials.carcass, column, row) => {
-		if (u[1] > u[0] && z[1] > z[0] && depth[1] > depth[0]) parts.push({
-			kind,
-			u,
-			z,
-			depth,
-			material,
-			pieces: [],
-			polygons: [],
-			...column === void 0 ? {} : {
-				column,
-				row
-			}
-		});
-	};
-	put("carcass", [0, cab.width], [bodyBottom, cab.z[1]], [0, t]);
-	put("carcass", [0, t], [bodyBottom, cab.z[1]], [t, cab.depth]);
-	put("carcass", [cab.width - t, cab.width], [bodyBottom, cab.z[1]], [t, cab.depth]);
-	put("carcass", [t, cab.width - t], [bodyBottom, bodyBottom + tm], [t, cab.depth]);
-	put("carcass", [t, cab.width - t], [cab.z[1] - tm, cab.z[1]], [t, cab.depth]);
-	for (const col of columns.slice(1)) put("carcass", [col.u[0] - t / 2, col.u[0] + t / 2], [bodyBottom, cab.z[1]], [t, cab.depth]);
-	if (cab.plinth) put("plinth", [0, cab.width], [cab.z[0], bodyBottom], [0, Math.max(t, cab.depth - 50)]);
-	for (const c of cells) {
-		const { u, z, cell } = c, count = Math.max(1, Math.floor(cell.count ?? (cell.type === "drawers" ? 3 : 1)));
-		if (c.row > 0) put("shelf", u, [z[0] - tm / 2, z[0] + tm / 2], [t, cab.depth]);
-		if ([
-			"door",
-			"doors",
-			"drawers",
-			"flap"
-		].includes(cell.type)) {
-			const nx = cell.type === "doors" ? 2 : 1, nz = cell.type === "drawers" ? count : 1;
-			for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) put("front", [u[0] + (u[1] - u[0]) * i / nx + 1.5, u[0] + (u[1] - u[0]) * (i + 1) / nx - 1.5], [z[0] + (z[1] - z[0]) * j / nz + .0015, z[0] + (z[1] - z[0]) * (j + 1) / nz - .0015], [cab.depth - t, cab.depth], cell.material ?? cab.materials.front, c.column, c.row);
-		}
-		if (cell.type === "open") for (let j = 1; j <= (cell.count ?? 0); j++) {
-			const h = z[0] + (z[1] - z[0]) * j / ((cell.count ?? 0) + 1);
-			put("shelf", u, [h - tm / 2, h + tm / 2], [t, cab.depth]);
-		}
-		if (cell.type === "appliance") {
-			const size = cell.appliance?.size ?? [
-				u[1] - u[0] - t * 2,
-				cab.depth - t,
-				z[1] - z[0] - tm * 2
-			], center = (u[0] + u[1]) / 2;
-			put("appliance", [center - size[0] / 2, center + size[0] / 2], [z[0] + tm, z[0] + tm + size[2]], [cab.depth - size[1], cab.depth], void 0, c.column, c.row);
-		}
-		if (cell.void?.top) put("top", u, [cell.void.top.z - .018, cell.void.top.z], [0, cab.depth + (cell.void.top.overhang ?? 0)], cell.void.top.material ?? cab.top?.material ?? cab.materials.carcass);
-	}
-	if (cab.top) put("top", [-(cab.top.overhang ?? 0), cab.width + (cab.top.overhang ?? 0)], [cab.z[1], cab.z[1] + cab.top.thickness / 1e3], [0, cab.depth + (cab.top.overhang ?? 0)], cab.top.material);
-	for (const part of parts) {
-		part.pieces = subtractRects(part, part.kind === "top" ? [] : cuts.filter((c) => c.depth === "through" || c.depth > 0));
-		part.polygons = part.pieces.map((p) => [rectPoly(p)]);
-	}
-	return {
-		width: cab.width,
-		depth: cab.depth,
-		z: [...cab.z],
-		columns,
-		cells,
-		parts,
-		cuts,
-		footprint: [
-			[0, 0],
-			[cab.width, 0],
-			[cab.width, cab.depth],
-			[0, cab.depth]
-		],
-		issues
-	};
-}
-/** Returns a local-to-world transform; independent cabinets' at is their center. */
-function cabinetTransform(plan, cab) {
-	if ("face" in cab.place) {
-		const place = cab.place, axis = faceAxis(plan, place.face);
-		if (axis.wall.bulge) throw new DecorGeometryError("arc-unsupported", "弧墙靠柜暂不支持");
-		const start = axis.toU(place.s + (place.face.side === -1 ? cab.width : 0));
-		return (u, depth) => axis.at(axis.toS(start + u), (place.gap ?? 0) - (cab.embed ?? 0) + depth);
-	}
-	const p = cab.place, theta = p.rot * Math.PI / 180, right = [Math.cos(theta), Math.sin(theta)], normal = [-Math.sin(theta), Math.cos(theta)];
-	return (u, depth) => add(p.at, add(mul(right, u - cab.width / 2), mul(normal, depth - cab.depth / 2)));
-}
-function cabinetFootprint(plan, cab) {
-	const at = cabinetTransform(plan, cab);
-	return [
-		[0, 0],
-		[cab.width, 0],
-		[cab.width, cab.depth],
-		[0, cab.depth]
-	].map(([u, d]) => at(u, d));
-}
-// src/core/decor/furniture.ts
-var FURNITURE_LIBRARY = [
-	[
-		"sofa-3",
-		"三人沙发",
-		"客厅",
-		2400,
-		900,
-		.85
-	],
-	[
-		"sofa-2",
-		"双人沙发",
-		"客厅",
-		1800,
-		900,
-		.85
-	],
-	[
-		"armchair",
-		"单椅",
-		"客厅",
-		800,
-		800,
-		.85
-	],
-	[
-		"coffee-table",
-		"茶几",
-		"客厅",
-		1200,
-		600,
-		.4
-	],
-	[
-		"bed-1800",
-		"双人床",
-		"卧室",
-		1800,
-		2e3,
-		.5
-	],
-	[
-		"bed-1500",
-		"双人床",
-		"卧室",
-		1500,
-		2e3,
-		.5
-	],
-	[
-		"bed-1200",
-		"单人床",
-		"卧室",
-		1200,
-		2e3,
-		.5
-	],
-	[
-		"nightstand",
-		"床头柜",
-		"卧室",
-		500,
-		400,
-		.5
-	],
-	[
-		"dining-table",
-		"餐桌",
-		"餐厨",
-		1600,
-		800,
-		.75
-	],
-	[
-		"chair",
-		"餐椅",
-		"餐厨",
-		450,
-		500,
-		.85
-	],
-	[
-		"desk",
-		"书桌",
-		"书房",
-		1200,
-		600,
-		.75
-	],
-	[
-		"bookshelf",
-		"书架",
-		"书房",
-		800,
-		300,
-		2
-	],
-	[
-		"fridge",
-		"冰箱",
-		"家电",
-		900,
-		700,
-		1.9
-	],
-	[
-		"washer",
-		"洗衣机",
-		"家电",
-		600,
-		650,
-		.85
-	],
-	[
-		"dryer",
-		"烘干机",
-		"家电",
-		600,
-		650,
-		.85
-	],
-	[
-		"oven",
-		"烤箱",
-		"家电",
-		600,
-		550,
-		.6
-	],
-	[
-		"steamer",
-		"蒸箱",
-		"家电",
-		600,
-		550,
-		.45
-	],
-	[
-		"dishwasher",
-		"洗碗机",
-		"家电",
-		600,
-		600,
-		.8
-	],
-	[
-		"microwave",
-		"微波炉",
-		"家电",
-		500,
-		400,
-		.3
-	],
-	[
-		"tv",
-		"电视",
-		"家电",
-		1450,
-		80,
-		.83
-	],
-	[
-		"rug",
-		"地毯",
-		"软装",
-		2400,
-		1600,
-		.01
-	],
-	[
-		"toilet",
-		"坐便器",
-		"卫浴",
-		400,
-		700,
-		.75
-	],
-	[
-		"basin",
-		"洗手台",
-		"卫浴",
-		800,
-		500,
-		.85
-	],
-	[
-		"bathtub",
-		"浴缸",
-		"卫浴",
-		1700,
-		750,
-		.6
-	],
-	[
-		"wardrobe",
-		"衣柜",
-		"收纳",
-		1800,
-		600,
-		2.4
-	]
-].map(([type, name, category, w, d, height]) => ({
-	type: String(type),
-	name: String(name),
-	category: String(category),
-	size: [Number(w), Number(d)],
-	height: Number(height),
-	symbol: String(type)
-}));
-function furnitureFootprint(f, plan) {
-	if (plan) return furniturePose(plan, f).footprint;
-	if (!f.at) throw new Error("宿主家具占地需要传入 plan");
-	return footprint(f.at, f.rot ?? 0, f.size);
-}
-function footprint(at, rot, size) {
-	const a = rot * Math.PI / 180, co = Math.cos(a), si = Math.sin(a), [w, d] = size;
-	return [
-		[-w / 2, -d / 2],
-		[w / 2, -d / 2],
-		[w / 2, d / 2],
-		[-w / 2, d / 2]
-	].map(([x, y]) => add(at, [x * co - y * si, x * si + y * co]));
-}
-function furnitureLevel(plan, f) {
-	return levelOf(plan, { level: f.in ? furniturePose(plan, f).level : plan.walls.find((w) => w.id === f.against?.face.wall)?.level ?? f.level });
-}
-/** World XY in mm; z floor-relative metres; hosted rot is a local offset. */
-function furniturePose(plan, f) {
-	let center = f.at ?? [0, 0], rotation = f.rot ?? 0, height = f.z ?? 0, level = levelOf(plan, plan.walls.find((w) => w.id === f.against?.face.wall) ?? f).id, missing = false;
-	if (f.in) try {
-		const decor = plan.decor;
-		if (!decor) throw new Error("missing decor");
-		const cellRef = /^(.*):cell:(\d+):(\d+)$/.exec(f.in);
-		if (cellRef) {
-			const cab = decor.cabinets.find((c) => c.id === cellRef[1]);
-			if (!cab) throw new Error("missing cabinet");
-			const cell = layoutCabinet(cab).cells.find((c) => c.column === +cellRef[2] && c.row === +cellRef[3]);
-			if (!cell) throw new Error("missing cell");
-			const at = cabinetTransform(plan, cab), n = sub$1(at(0, 1), at(0, 0));
-			center = at((cell.u[0] + cell.u[1]) / 2, cab.depth - f.size[1] / 2);
-			rotation = Math.atan2(n[1], n[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
-			height = f.z ?? cell.z[0];
-			level = levelOf(plan, "face" in cab.place ? faceAxis(plan, cab.place.face).wall : cab).id;
-		} else {
-			const at = hostTransform(plan, decor, f.in);
-			if (!at) throw new Error("missing host");
-			const host = [
-				...decor.recesses,
-				...decor.panels,
-				...decor.cabinets
-			].find((h) => h.id === f.in);
-			let width, front, z, hostLevel;
-			if ("host" in host) {
-				width = host.rect.u ? host.rect.u[1] - host.rect.u[0] : host.rect.s[1] - host.rect.s[0];
-				z = host.rect.z;
-				const parent = "panel" in host.host ? decor.panels.find((p) => p.id === host.host.panel) : "cabinet" in host.host ? decor.cabinets.find((c) => c.id === host.host.cabinet) : void 0;
-				front = parent ? "thickness" in parent ? parent.type === "slats" ? parent.slats?.depth ?? parent.thickness : parent.thickness : parent.depth : 0;
-				hostLevel = "face" in host.host ? faceAxis(plan, host.host.face).wall.level : parent && "thickness" in parent ? faceAxis(plan, panelSpan(plan, parent).face).wall.level : parent && "place" in parent && "face" in parent.place ? faceAxis(plan, parent.place.face).wall.level : parent?.level;
-			} else if ("thickness" in host) {
-				const span = panelSpan(plan, host);
-				width = span.s[1] - span.s[0];
-				front = host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness;
-				z = span.z;
-				hostLevel = faceAxis(plan, span.face).wall.level;
-			} else {
-				width = host.width;
-				front = host.depth;
-				z = host.z;
-				hostLevel = "face" in host.place ? faceAxis(plan, host.place.face).wall.level : host.level;
-			}
-			center = at(width / 2, front - f.size[1] / 2);
-			const normal = sub$1(at(0, 1), at(0, 0));
-			rotation = Math.atan2(normal[1], normal[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
-			height = f.z ?? z[0];
-			level = levelOf(plan, { level: hostLevel }).id;
-		}
-	} catch {
-		missing = true;
-		const cache = plan.decor?.cache?.[f.id];
-		if (cache) {
-			center = cache.pose?.at ?? [(cache.box[0] + cache.box[2]) / 2, (cache.box[1] + cache.box[3]) / 2];
-			rotation = cache.pose?.rot ?? rotation;
-			height = cache.pose?.z ?? height;
-			level = cache.level ?? level;
-		}
-	}
-	return {
-		at: center,
-		center,
-		rot: rotation,
-		z: height,
-		level,
-		missing,
-		footprint: footprint(center, rotation, f.size)
-	};
-}
-// src/core/decor/legacy.ts
-var aliases = {
-	sofa: "sofa-3",
-	bed: "bed-1800",
-	table: "dining-table",
-	dining: "dining-table",
-	coffee: "coffee-table",
-	refrigerator: "fridge",
-	washing: "washer",
-	television: "tv",
-	cabinet: "wardrobe",
-	single: "armchair"
-};
-/** Returns converted values without touching either the archival legacy snapshot or plan. */
-function fromLegacyFurniture(plan) {
-	const legacy = plan.legacy ?? {}, layout = legacy.layout;
-	const raw = legacy.furniture ?? layout?.furniture, result = {
-		furniture: [],
-		materials: [],
-		presets: [],
-		warnings: []
-	};
-	const ids = new Set([
-		...plan.walls,
-		...plan.openings,
-		...plan.rooms,
-		...plan.beams,
-		...plan.questions,
-		...plan.changes,
-		...plan.levels ?? [],
-		...plan.columns ?? [],
-		...plan.shafts ?? [],
-		...plan.stairs ?? [],
-		...plan.voids ?? [],
-		...plan.decor?.furniture ?? [],
-		...plan.decor?.materials ?? [],
-		...plan.decor?.surfaces ?? [],
-		...plan.decor?.cabinets ?? [],
-		...plan.decor?.panels ?? [],
-		...plan.decor?.recesses ?? [],
-		...plan.decor?.presets ?? []
-	].map((x) => x.id));
-	const id = (base) => {
-		let next = base, n = 1;
-		while (ids.has(next)) next = `${base}-${n++}`;
-		ids.add(next);
-		return next;
-	};
-	if (Array.isArray(raw)) raw.forEach((f, i) => {
-		if (!f || ![
-			f.cx,
-			f.cy,
-			f.w,
-			f.d
-		].every(Number.isFinite) || f.w <= 0 || f.d <= 0 || f.rot !== void 0 && !Number.isFinite(f.rot)) {
-			result.warnings.push(`旧家具第 ${i + 1} 件尺寸无效，保留在 legacy`);
-			return;
-		}
-		const type = aliases[f.type] ?? f.type, entry = FURNITURE_LIBRARY.find((e) => e.type === type);
-		const item = {
-			id: id(`legacy-furniture-${i + 1}`),
-			type: entry?.type ?? `placeholder:${String(f.type ?? "unknown")}`,
-			at: [f.cx, f.cy],
-			size: [f.w, f.d],
-			rot: f.rot ?? 0,
-			height: entry?.height ?? 1,
-			by: "user",
-			status: "confirmed",
-			...typeof f.name === "string" ? { name: f.name } : {}
-		};
-		if (typeof f.color === "string" && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(f.color)) {
-			const material = {
-				id: id(`${item.id}-color`),
-				name: `${item.name ?? entry?.name ?? "旧家具"}颜色`,
-				category: "other",
-				color: f.color
-			};
-			result.materials.push(material);
-			item.materials = { body: material.id };
-		}
-		result.furniture.push(item);
-	});
-	const color = legacy.wallColor ?? layout?.wallColor;
-	if (typeof color === "string" && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(color)) {
-		const material = {
-			id: id("legacy-wall-color"),
-			name: "旧方案墙漆",
-			category: "paint",
-			color
-		};
-		result.materials.push(material);
-		const style = id("legacy-style");
-		result.presets.push({
-			id: style,
-			name: "旧方案配色",
-			roles: { "wall.main": material.id },
-			by: "user"
-		});
-		result.style = style;
-	}
-	return result;
 }
 // src/core/decor/presets.ts
 var sampleMaterials = {
@@ -3395,14 +3196,35 @@ var STYLE_PRESETS = Object.entries(sampleStyles).map(([id, p]) => ({
 		"cabinet.carcass": p.roles["cabinet.front"]
 	},
 	board: [...p.board],
-	rooms: [{
-		match: ["卫", "厨"],
-		floor: "floor.wet",
-		wall: "wall.wet"
-	}, {
-		match: ["阳台"],
-		floor: "floor.outdoor"
-	}],
+	rooms: [
+		{
+			match: [
+				"卫",
+				"厨",
+				"淋浴",
+				"浴室",
+				"马桶",
+				"盥洗",
+				"洗手",
+				"洗衣"
+			],
+			floor: "floor.wet",
+			wall: "wall.wet"
+		},
+		{
+			match: [
+				"景观",
+				"休闲",
+				"观景"
+			],
+			floor: "floor.main",
+			wall: "wall.main"
+		},
+		{
+			match: ["阳台"],
+			floor: "floor.outdoor"
+		}
+	],
 	trims: {
 		skirting: {
 			height: .08,
@@ -3422,6 +3244,2661 @@ function createDecor(style = "cream") {
 		panels: [],
 		recesses: []
 	};
+}
+// src/core/decor/cabinets.ts
+/** Only the last width / top cell h may be omitted. No implicit rescaling of explicit dimensions. */
+function layoutCabinet(cab) {
+	const issues = [], invalid = (text) => issues.push({
+		id: cab.id,
+		code: "invalid",
+		level: "error",
+		text
+	});
+	const columns = [], cells = [], parts = [], cuts = [...cab.cuts ?? []];
+	const bodyBottom = cab.z[0] + (cab.plinth ?? 0), height = cab.z[1] - bodyBottom;
+	if (!(cab.width > 0 && cab.depth > 0 && height > 0) || !cab.columns.length) invalid("柜宽、柜深、柜高及分列必须有效");
+	let x = 0;
+	cab.columns.forEach((col, ci) => {
+		if (col.width === void 0 && ci !== cab.columns.length - 1) invalid("只有最后一列可以省略宽度");
+		const width = col.width ?? cab.width - x;
+		if (!(width > 0) || !col.cells.length) invalid("每列必须有正宽度和至少一个格子");
+		columns.push({
+			width,
+			u: [x, x + width]
+		});
+		let z = bodyBottom;
+		col.cells.forEach((cell, ri) => {
+			if (cell.h === void 0 && ri !== col.cells.length - 1) invalid("只有最上面一格可以省略高度");
+			const h = cell.h ?? cab.z[1] - z, rect = {
+				u: [x, x + width],
+				z: [z, z + h]
+			};
+			if (!(h > 0)) invalid("每格高度必须为正");
+			cells.push({
+				...rect,
+				column: ci,
+				row: ri,
+				cell,
+				type: cell.type,
+				pieces: subtractRects(rect, cab.cuts ?? [])
+			});
+			if (cell.type === "void") cuts.push({
+				...rect,
+				depth: cell.void?.depth ?? "through"
+			});
+			z += h;
+		});
+		if (Math.abs(z - cab.z[1]) > 1e-7) invalid("各格高度之和必须等于柜高减踢脚");
+		x += width;
+	});
+	if (Math.abs(x - cab.width) > 1e-5) invalid("各列宽度之和必须等于柜宽；改列宽时仅末列省略值承担余量");
+	for (const c of cuts) {
+		if (c.depth !== "through" && (!(c.depth > 0) || c.depth > cab.depth)) issues.push({
+			id: cab.id,
+			code: "host-depth",
+			level: "error",
+			text: `柜深只有 ${cab.depth} mm`
+		});
+		if (c.u[0] < 0 || c.u[1] > cab.width || c.z[0] < cab.z[0] || c.z[1] > cab.z[1] || c.u[1] <= c.u[0] || c.z[1] <= c.z[0]) invalid("柜体挖洞范围超出柜体");
+	}
+	const t = Math.min(18, cab.width / 4, cab.depth / 4), tm = t / 1e3;
+	const put = (kind, u, z, depth, material = cab.materials.carcass, column, row) => {
+		if (u[1] > u[0] && z[1] > z[0] && depth[1] > depth[0]) parts.push({
+			kind,
+			u,
+			z,
+			depth,
+			material,
+			pieces: [],
+			polygons: [],
+			...column === void 0 ? {} : {
+				column,
+				row
+			}
+		});
+	};
+	put("carcass", [0, cab.width], [bodyBottom, cab.z[1]], [0, t]);
+	put("carcass", [0, t], [bodyBottom, cab.z[1]], [t, cab.depth]);
+	put("carcass", [cab.width - t, cab.width], [bodyBottom, cab.z[1]], [t, cab.depth]);
+	put("carcass", [t, cab.width - t], [bodyBottom, bodyBottom + tm], [t, cab.depth]);
+	put("carcass", [t, cab.width - t], [cab.z[1] - tm, cab.z[1]], [t, cab.depth]);
+	for (const col of columns.slice(1)) put("carcass", [col.u[0] - t / 2, col.u[0] + t / 2], [bodyBottom, cab.z[1]], [t, cab.depth]);
+	if (cab.plinth) put("plinth", [0, cab.width], [cab.z[0], bodyBottom], [0, Math.max(t, cab.depth - 50)]);
+	for (const c of cells) {
+		const { u, z, cell } = c, count = Math.max(1, Math.floor(cell.count ?? (cell.type === "drawers" ? 3 : 1)));
+		if (c.row > 0) put("shelf", u, [z[0] - tm / 2, z[0] + tm / 2], [t, cab.depth]);
+		if ([
+			"door",
+			"doors",
+			"drawers",
+			"flap"
+		].includes(cell.type)) {
+			const nx = cell.type === "doors" ? 2 : 1, nz = cell.type === "drawers" ? count : 1;
+			for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) put("front", [u[0] + (u[1] - u[0]) * i / nx + 1.5, u[0] + (u[1] - u[0]) * (i + 1) / nx - 1.5], [z[0] + (z[1] - z[0]) * j / nz + .0015, z[0] + (z[1] - z[0]) * (j + 1) / nz - .0015], [cab.depth - t, cab.depth], cell.material ?? cab.materials.front, c.column, c.row);
+		}
+		if (cell.type === "open") for (let j = 1; j <= (cell.count ?? 0); j++) {
+			const h = z[0] + (z[1] - z[0]) * j / ((cell.count ?? 0) + 1);
+			put("shelf", u, [h - tm / 2, h + tm / 2], [t, cab.depth]);
+		}
+		if (cell.type === "appliance") {
+			const size = cell.appliance?.size ?? [
+				u[1] - u[0] - t * 2,
+				cab.depth - t,
+				z[1] - z[0] - tm * 2
+			], center = (u[0] + u[1]) / 2;
+			put("appliance", [center - size[0] / 2, center + size[0] / 2], [z[0] + tm, z[0] + tm + size[2]], [cab.depth - size[1], cab.depth], void 0, c.column, c.row);
+		}
+		if (cell.void?.top) put("top", u, [cell.void.top.z - .018, cell.void.top.z], [0, cab.depth + (cell.void.top.overhang ?? 0)], cell.void.top.material ?? cab.top?.material ?? cab.materials.carcass);
+	}
+	if (cab.top) put("top", [-(cab.top.overhang ?? 0), cab.width + (cab.top.overhang ?? 0)], [cab.z[1], cab.z[1] + cab.top.thickness / 1e3], [0, cab.depth + (cab.top.overhang ?? 0)], cab.top.material);
+	for (const part of parts) {
+		part.pieces = subtractRects(part, part.kind === "top" ? [] : cuts.filter((c) => c.depth === "through" || c.depth > 0));
+		part.polygons = part.pieces.map((p) => [rectPoly(p)]);
+	}
+	return {
+		width: cab.width,
+		depth: cab.depth,
+		z: [...cab.z],
+		columns,
+		cells,
+		parts,
+		cuts,
+		footprint: [
+			[0, 0],
+			[cab.width, 0],
+			[cab.width, cab.depth],
+			[0, cab.depth]
+		],
+		issues
+	};
+}
+/**
+* 改柜宽：末列承担变化，前面各列不动；末列被压到放不下（< 150 mm）时才按比例分摊到所有列。
+* 界面（检查器、立面拖边）和 decor-edit 的 set.width 都走这里。只看 width 和 columns，文件形状、内存形状都能用；不改入参。
+* 末列原来省略宽度就继续省略，原来写了就写新值。
+*/
+function resizeCabinet(c, width) {
+	const next = {
+		...c,
+		width,
+		columns: c.columns.map((col) => ({ ...col }))
+	};
+	const cols = next.columns, last = cols.at(-1);
+	if (!last || !(width > 0) || !Number.isFinite(width)) return next;
+	const rest = width - cols.slice(0, -1).reduce((a, col) => a + (col.width ?? 0), 0);
+	if (rest >= 150) {
+		if (last.width !== void 0) last.width = rest;
+		return next;
+	}
+	const f = width / c.width;
+	let used = 0;
+	cols.slice(0, -1).forEach((col) => {
+		col.width = Math.round((col.width ?? 0) * f);
+		used += col.width;
+	});
+	if (last.width !== void 0) last.width = width - used;
+	return next;
+}
+/** Returns a local-to-world transform; independent cabinets' at is their center. */
+function cabinetTransform(plan, cab) {
+	if ("face" in cab.place) {
+		const place = cab.place, axis = faceAxis(plan, place.face);
+		if (axis.wall.bulge) throw new DecorGeometryError("arc-unsupported", "弧墙靠柜暂不支持");
+		const start = axis.toU(place.s + (place.face.side === -1 ? cab.width : 0));
+		return (u, depth) => axis.at(axis.toS(start + u), (place.gap ?? 0) - (cab.embed ?? 0) + depth);
+	}
+	const p = cab.place, theta = p.rot * Math.PI / 180, right = [Math.cos(theta), Math.sin(theta)], normal = [-Math.sin(theta), Math.cos(theta)];
+	return (u, depth) => add(p.at, add(mul(right, u - cab.width / 2), mul(normal, depth - cab.depth / 2)));
+}
+function cabinetFootprint(plan, cab) {
+	const at = cabinetTransform(plan, cab);
+	return [
+		[0, 0],
+		[cab.width, 0],
+		[cab.width, cab.depth],
+		[0, cab.depth]
+	].map(([u, d]) => at(u, d));
+}
+// src/core/decor/surfaces.ts
+var NEUTRAL_MATERIAL = {
+	id: "__neutral__",
+	name: "白模中性色",
+	category: "other",
+	color: "#f3f2ef"
+};
+function styleOf(plan) {
+	return plan.decor?.presets?.find((p) => p.id === plan.decor.style) ?? STYLE_PRESETS.find((p) => p.id === plan.decor?.style);
+}
+function materialOf(plan, id) {
+	return plan.decor?.materials.find((m) => m.id === id) ?? BUILTIN_MATERIALS.find((m) => m.id === id) ?? NEUTRAL_MATERIAL;
+}
+function roomRole(plan, room, kind) {
+	const text = room ? `${room.name} ${room.use ?? ""}` : "", rule = styleOf(plan)?.rooms?.find((r) => r.match.some((m) => text.includes(m)) && r[kind]);
+	if (rule?.[kind]) return rule[kind];
+	return /卫|厨|淋浴|浴室|马桶|盥洗|洗手|洗衣/.test(text) || text.includes("阳台") && !/景观|休闲|观景/.test(text) ? `${kind}.wet` : `${kind}.main`;
+}
+function sameTarget(a, b) {
+	return "floor" in a && "floor" in b ? a.floor === b.floor : "ceiling" in a && "ceiling" in b ? a.ceiling === b.ceiling : "face" in a && "face" in b ? a.face.wall === b.face.wall && a.face.side === b.face.side : false;
+}
+/** A partial overlay may continue onto other records in its connected face run. */
+function overlaysOnFace(plan, face) {
+	return (plan.decor?.surfaces ?? []).flatMap((surface) => {
+		const t = surface.target;
+		if (!("face" in t)) return [];
+		if (t.face.wall === face.wall && t.face.side === face.side) return [surface];
+		if (!t.s) return [];
+		try {
+			const part = faceRun(plan, t.face).find((p) => p.face.wall === face.wall && p.face.side === face.side);
+			if (!part) return [];
+			const s = ordered(...t.s.map((v) => part.reversed ? part.s[1] - v : v - part.s[0]));
+			return [{
+				...surface,
+				target: {
+					...t,
+					face,
+					s
+				}
+			}];
+		} catch {
+			return [];
+		}
+	});
+}
+/** Point-wise finish query; omitted coordinates select only whole-face overrides. Last overlay wins. */
+function resolveFinish(plan, target, opts = {}) {
+	if (plan.decor && (opts.styleId !== void 0 || opts.keep === false)) plan = {
+		...plan,
+		decor: {
+			...plan.decor,
+			style: opts.styleId ?? plan.decor.style,
+			surfaces: opts.keep === false ? [] : plan.decor.surfaces
+		}
+	};
+	const override = [..."face" in target ? overlaysOnFace(plan, target.face) : plan.decor?.surfaces ?? []].reverse().find((s) => sameTarget(s.target, target) && (!("face" in s.target) || (!s.target.s || opts.s !== void 0 && opts.s >= s.target.s[0] && opts.s <= s.target.s[1]) && (!s.target.z || opts.z !== void 0 && opts.z >= s.target.z[0] && opts.z <= s.target.z[1])));
+	const room = opts.room ?? ("floor" in target ? plan.rooms.find((r) => r.id === target.floor) : "ceiling" in target ? plan.rooms.find((r) => r.id === target.ceiling) : faceRoom(plan, target.face));
+	const role = "ceiling" in target ? "ceiling" : "floor" in target && room?.floorOffset ? "stone.top" : roomRole(plan, room, "floor" in target ? "floor" : "wall");
+	const material = materialOf(plan, override?.material ?? opts.material ?? styleOf(plan)?.roles[role] ?? styleOf(plan)?.roles["floor" in target ? "floor.main" : "ceiling" in target ? "ceiling" : "wall.main"]);
+	return {
+		styleMaterial: materialOf(plan, styleOf(plan)?.roles[role]),
+		...override ? { surfaceItem: override } : {},
+		material,
+		materialId: material.id,
+		overridden: !!override,
+		...override ? {
+			surface: override.id,
+			by: override.by
+		} : {},
+		role
+	};
+}
+var polyArea = (polys) => polys.reduce((sum, rings) => sum + polygonArea(rings[0]) - rings.slice(1).reduce((s, r) => s + polygonArea(r), 0), 0);
+function previewPlan(plan, opts) {
+	return plan.decor && (opts.styleId !== void 0 || opts.keep === false) ? {
+		...plan,
+		decor: {
+			...plan.decor,
+			style: opts.styleId ?? plan.decor.style,
+			surfaces: opts.keep === false ? [] : plan.decor.surfaces
+		}
+	} : plan;
+}
+function resolveSurfaces(plan, opts = {}) {
+	plan = previewPlan(plan, opts);
+	const floors = [], ceilings = [], walls = [];
+	for (const room of plan.rooms) for (const kind of ["floor", "ceiling"]) {
+		const target = kind === "floor" ? { floor: room.id } : { ceiling: room.id }, finish = resolveFinish(plan, target, { room });
+		(kind === "floor" ? floors : ceilings).push({
+			kind,
+			target,
+			...finish,
+			room: room.id,
+			polygons: [[room.poly]],
+			area: polygonArea(room.poly) / 1e6
+		});
+	}
+	for (const w of plan.walls) for (const side of [1, -1]) {
+		const face = {
+			wall: w.id,
+			side
+		}, axis = faceAxis(plan, face), height = w.kind === "half" ? w.lowHeight ?? 1 : effectiveWallHeight(plan, w), adjacent = roomsBesideWall(plan, w.id)[side === 1 ? "positive" : "negative"];
+		const overrides = overlaysOnFace(plan, face);
+		const ss = [
+			0,
+			axis.length,
+			...overrides.flatMap((s) => "face" in s.target ? s.target.s ?? [] : []),
+			...adjacent.flatMap((r) => r.poly.map((p) => w.bulge ? projectToWall(w, p).s : dot$2(sub$1(p, w.a), wallDir(w))))
+		].filter((s) => s >= 0 && s <= axis.length);
+		const zs = [
+			0,
+			height,
+			...overrides.flatMap((s) => "face" in s.target ? s.target.z ?? [] : [])
+		].filter((z) => z >= 0 && z <= height);
+		const sx = [...new Set(ss)].sort((a, b) => a - b), zz = [...new Set(zs)].sort((a, b) => a - b);
+		const holes = plan.openings.filter((o) => o.wall === w.id).map((o) => [rectPoly({
+			u: [o.offset, o.offset + o.width],
+			z: [o.sill, o.head]
+		})]);
+		const intervals = faceIntervals(plan, face);
+		for (let i = 1; i < sx.length; i++) for (let j = 1; j < zz.length; j++) {
+			const s = [sx[i - 1], sx[i]], z = [zz[j - 1], zz[j]], mid = (s[0] + s[1]) / 2;
+			const room = adjacent.find((r) => pointInPolygon(axis.at(mid, 1), r.poly)), target = {
+				face,
+				s,
+				z
+			};
+			let polygons = intersection([[rectPoly({
+				u: s,
+				z
+			})]], intervals.map((u) => [rectPoly({
+				u,
+				z: [0, height]
+			})]));
+			polygons = difference(polygons, holes);
+			if (!polygons.length) continue;
+			walls.push({
+				kind: "wall",
+				target,
+				...resolveFinish(plan, { face }, {
+					s: mid,
+					z: (z[0] + z[1]) / 2,
+					room
+				}),
+				...room ? { room: room.id } : {},
+				polygons,
+				area: polyArea(polygons) * axis.scale / 1e3
+			});
+		}
+	}
+	return {
+		floors,
+		walls,
+		ceilings,
+		all: [
+			...floors,
+			...walls,
+			...ceilings
+		]
+	};
+}
+/** m²; disjoint overlays and opening unions are counted once. No purchasing/waste allowance. */
+function materialTakeoff(plan, opts = {}) {
+	plan = previewPlan({
+		...plan,
+		decor: confirmedDecor(plan.decor)
+	}, opts);
+	const quantities = /* @__PURE__ */ new Map(), add = (material, kind, area) => {
+		const q = quantities.get(material.id) ?? {
+			material,
+			materialId: material.id,
+			area: 0,
+			floor: 0,
+			wall: 0,
+			ceiling: 0,
+			panel: 0,
+			cabinet: 0,
+			countertop: 0,
+			approximate: true,
+			where: [],
+			overridden: false,
+			count: 0
+		};
+		q[kind] += Math.max(0, area);
+		q.area += Math.max(0, area);
+		quantities.set(material.id, q);
+	};
+	const surfaces = resolveSurfaces(plan).all;
+	for (const s of surfaces) {
+		let polygons = s.polygons;
+		if ("face" in s.target) {
+			const f = s.target.face, axis = faceAxis(plan, f), covers = [];
+			for (const panel of plan.decor?.panels ?? []) try {
+				const g = panelGeometry(plan, panel), member = faceRun(plan, g.span.face).find((p) => p.face.wall === f.wall && p.face.side === f.side);
+				if (!member) continue;
+				const pa = faceAxis(plan, g.span.face), u0 = Math.min(...g.span.s.map(pa.toU));
+				const through = (plan.decor?.recesses ?? []).filter((r) => "panel" in r.host && r.host.panel === panel.id && r.depth === "through" && r.rect.u).map((r) => [rectPoly({
+					u: r.rect.u,
+					z: r.rect.z
+				})]);
+				const covering = difference(g.polygons, through);
+				covers.push(...covering.map((rings) => rings.map((r) => r.map(([u, z]) => {
+					const v = pa.toS(u0 + u);
+					return [member.reversed ? member.s[1] - v : v - member.s[0], z];
+				}))));
+			} catch {}
+			polygons = difference(polygons, covers);
+			for (const recess of [...plan.decor?.recesses ?? []].reverse()) if ("face" in recess.host && recess.back && recess.rect.s && typeof recess.depth === "number" && recess.depth < axis.wall.thickness) try {
+				const part = faceRun(plan, recess.host.face).find((p) => p.face.wall === f.wall && p.face.side === f.side);
+				if (!part) continue;
+				const patch = [[rectPoly({
+					u: ordered(...recess.rect.s.map((v) => part.reversed ? part.s[1] - v : v - part.s[0])),
+					z: recess.rect.z
+				})]], covered = intersection(polygons, patch);
+				add(materialOf(plan, recess.back), "wall", polyArea(covered) * axis.scale / 1e3);
+				polygons = difference(polygons, patch);
+			} catch {}
+			add(s.material, s.kind, polyArea(polygons) * axis.scale / 1e3);
+		} else add(s.material, s.kind, s.area);
+	}
+	for (const p of plan.decor?.panels ?? []) try {
+		const g = panelGeometry(plan, p);
+		add(materialOf(plan, p.material), "panel", polyArea(g.visiblePolygons) / 1e3);
+		for (const r of plan.decor?.recesses ?? []) if ("panel" in r.host && r.host.panel === p.id && r.depth !== "through" && r.rect.u) add(materialOf(plan, r.back ?? p.material), "panel", polyArea(intersection(g.polygons, [[rectPoly({
+			u: r.rect.u,
+			z: r.rect.z
+		})]])) / 1e3);
+	} catch {}
+	for (const cab of plan.decor?.cabinets ?? []) {
+		const layout = layoutCabinet(cab);
+		if (layout.issues.length) continue;
+		const full = [[rectPoly({
+			u: [0, cab.width],
+			z: cab.z
+		})]], holes = [...layout.cuts, ...(plan.decor?.recesses ?? []).filter((r) => "cabinet" in r.host && r.host.cabinet === cab.id && r.rect.u).map((r) => ({
+			u: r.rect.u,
+			z: r.rect.z,
+			depth: r.depth
+		}))];
+		const through = holes.filter((h) => h.depth === "through").map((h) => [rectPoly(h)]), allCuts = holes.map((h) => [rectPoly(h)]), fronts = [];
+		for (const part of layout.parts.filter((p) => p.kind === "front" || p.kind === "appliance")) {
+			const visible = difference([[rectPoly(part)]], allCuts);
+			fronts.push(...visible);
+			if (part.kind === "front") add(materialOf(plan, part.material ?? cab.materials.front), "cabinet", polyArea(visible) / 1e3);
+		}
+		let carcass = difference(difference(full, through), fronts);
+		for (const r of [...plan.decor?.recesses ?? []].reverse()) if ("cabinet" in r.host && r.host.cabinet === cab.id && r.depth !== "through" && r.back && r.rect.u) {
+			const patch = [[rectPoly({
+				u: r.rect.u,
+				z: r.rect.z
+			})]], covered = intersection(carcass, patch);
+			add(materialOf(plan, r.back), "cabinet", polyArea(covered) / 1e3);
+			carcass = difference(carcass, patch);
+		}
+		add(materialOf(plan, cab.materials.carcass), "cabinet", polyArea(carcass) / 1e3);
+		for (const top of layout.parts.filter((p) => p.kind === "top")) add(materialOf(plan, top.material), "countertop", (top.u[1] - top.u[0]) * (top.depth[1] - top.depth[0]) / 1e6);
+	}
+	for (const q of quantities.values()) {
+		const matching = surfaces.filter((s) => s.materialId === q.materialId);
+		const panels = (plan.decor?.panels ?? []).filter((p) => p.material === q.materialId);
+		const cabinets = (plan.decor?.cabinets ?? []).filter((c) => c.materials.front === q.materialId);
+		const roomName = (id) => id ? plan.rooms.find((r) => r.id === id)?.name ?? id : void 0;
+		const location = (item, seen = /* @__PURE__ */ new Set()) => {
+			if (seen.has(item.id)) return void 0;
+			seen.add(item.id);
+			try {
+				const span = itemSpan(plan, item);
+				if (span) return wallLocation(plan, span.face, decorRoom(plan, item), (span.s[0] + span.s[1]) / 2);
+			} catch {}
+			if ("host" in item && !("face" in item.host) && plan.decor) {
+				const id = "panel" in item.host ? item.host.panel : item.host.cabinet, parent = decorItems(plan.decor).find((i) => i.id === id);
+				if (parent) return location(parent, seen);
+			}
+			return roomName(decorRoom(plan, item));
+		};
+		const faceName = (face, room, s) => wallLocation(plan, face, room, s);
+		q.where = [.../* @__PURE__ */ new Set([
+			...matching.map((s) => "face" in s.target ? faceName(s.target.face, s.room, s.target.s ? (s.target.s[0] + s.target.s[1]) / 2 : void 0) : `${roomName(s.room) ?? s.room ?? "未命名房间"}${s.kind === "ceiling" ? "顶面" : "地面"}`),
+			...panels.map((p) => {
+				try {
+					const sp = panelSpan(plan, p);
+					return `${faceName(sp.face, decorRoom(plan, p), (sp.s[0] + sp.s[1]) / 2)}·${p.name ?? p.id}`;
+				} catch {
+					return `${p.id}（宿主缺失）`;
+				}
+			}),
+			...(plan.decor?.cabinets ?? []).filter((c) => [
+				c.materials.front,
+				c.materials.carcass,
+				...layoutCabinet(c).parts.map((p) => p.material)
+			].includes(q.materialId)).map((c) => `${location(c) ?? ("face" in c.place ? faceName(c.place.face, void 0, c.place.s + c.width / 2) : `楼层${c.level ?? "L1"}`)}·${c.name ?? c.id}`),
+			...(plan.decor?.recesses ?? []).filter((r) => r.back === q.materialId).map((r) => `${location(r) ?? ("face" in r.host ? faceName(r.host.face) : "宿主" + ("panel" in r.host ? r.host.panel : r.host.cabinet))}·${r.name ?? r.id}`)
+		])];
+		q.overridden = matching.some((s) => s.overridden) || panels.some((p) => p.material !== styleOf(plan)?.roles["wall.accent"]);
+		q.count = cabinets.length;
+	}
+	return [...quantities.values()].sort((a, b) => a.materialId.localeCompare(b.materialId));
+}
+/** Longest adjacent room wins for a whole-face query; point queries can pass opts.room. */
+function faceRoom(plan, face) {
+	const w = plan.walls.find((w) => w.id === face.wall);
+	if (!w) return void 0;
+	const rooms = roomsBesideWall(plan, w.id)[face.side === 1 ? "positive" : "negative"], axis = faceAxis(plan, face);
+	const length = (r) => {
+		const ss = r.poly.filter((p) => Math.abs(dot$2(sub$1(p, axis.at(0)), axis.normal)) < 30).map((p) => Math.max(0, Math.min(axis.length, dot$2(sub$1(p, w.a), wallDir(w)))));
+		return ss.length ? Math.max(...ss) - Math.min(...ss) : 0;
+	};
+	return [...rooms].sort((a, b) => length(b) - length(a) || polygonArea(b.poly) - polygonArea(a.poly))[0];
+}
+/** Direction from the room toward the wall, shared by CLI and material locations. */
+function wallDirection(plan, face, s) {
+	const axis = faceAxis(plan, face), n = axis.normalAt(s ?? axis.length / 2);
+	const angle = ((Math.atan2(-n[0], n[1]) * 180 / Math.PI - (plan.north ?? 0)) % 360 + 360) % 360;
+	return (plan.north === void 0 ? [
+		"上",
+		"右",
+		"下",
+		"左"
+	] : [
+		"北",
+		"东",
+		"南",
+		"西"
+	])[Math.round(angle / 90) % 4];
+}
+/** Direction is from the room toward the wall, rotated by plan.north when present. */
+function wallLocation(plan, face, room, s) {
+	if (!plan.walls.some((w) => w.id === face.wall)) return `${face.wall}（宿主缺失）`;
+	const axis = faceAxis(plan, face), direction = wallDirection(plan, face, s);
+	const name = room ? plan.rooms.find((r) => r.id === room)?.name ?? room : void 0;
+	return name ? `${name}${direction}墙` : `${axis.wall.name ?? axis.wall.id}（${face.side === 1 ? "正侧" : "反侧"}·${direction}）`;
+}
+// src/core/decor/embed.ts
+function wallEmbed(plan, item) {
+	if ("host" in item) return "face" in item.host && item.rect.s ? {
+		id: item.id,
+		face: item.host.face,
+		s: item.rect.s,
+		z: item.rect.z,
+		depth: item.depth
+	} : void 0;
+	if (!item.embed) return void 0;
+	if ("place" in item) return "face" in item.place ? {
+		id: item.id,
+		face: item.place.face,
+		s: [item.place.s, item.place.s + item.width],
+		z: item.z,
+		depth: item.embed
+	} : void 0;
+	if (!item.against) return void 0;
+	const wall = faceWall(plan, item.against.face), ss = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall)));
+	return {
+		id: item.id,
+		face: item.against.face,
+		s: [Math.min(...ss), Math.max(...ss)],
+		z: [item.z ?? 0, (item.z ?? 0) + item.height],
+		depth: item.embed
+	};
+}
+function embedsOf(plan, decor) {
+	return [
+		...decor.recesses,
+		...decor.cabinets,
+		...decor.furniture
+	].flatMap((item) => {
+		try {
+			const e = wallEmbed(plan, item);
+			return e ? [e] : [];
+		} catch {
+			return [];
+		}
+	});
+}
+function embedFootprint(plan, e) {
+	const a = faceAxis(plan, e.face), depth = e.depth === "through" ? a.wall.thickness : e.depth;
+	return [
+		a.at(e.s[0]),
+		a.at(e.s[1]),
+		a.at(e.s[1], -depth),
+		a.at(e.s[0], -depth)
+	];
+}
+function protectedFact(id, host, label) {
+	const certainty = host.evidence?.certainty ?? "unknown";
+	return {
+		id,
+		code: "protected",
+		level: "warn",
+		text: `这面在方案里标为${label}（${certainty === "seen" ? "读图看到" : certainty === "inferred" ? "读图推断，没确认" : "读图把握程度未知"}）。嵌入、挖槽能不能做、能挖多深，需要专业人员到现场确认。`
+	};
+}
+/** Geometry errors block the edit; protected facts are warnings only. Pass source plan to preserve original protection. */
+function checkEmbed(plan, decor, item, originalPlan = plan) {
+	const issues = [], issue = (code, text) => issues.push({
+		id: item.id,
+		code,
+		level: "error",
+		text
+	});
+	const requestedDepth = "host" in item ? item.depth : item.embed;
+	if (requestedDepth !== void 0 && requestedDepth !== "through" && (!Number.isFinite(requestedDepth) || requestedDepth < 0 || "host" in item && requestedDepth === 0)) {
+		issue("invalid", "嵌入深度必须是有效正数");
+		return issues;
+	}
+	if ("host" in item && !("face" in item.host)) {
+		const host = "panel" in item.host ? decor.panels.find((p) => p.id === item.host.panel) : decor.cabinets.find((c) => c.id === item.host.cabinet);
+		if (!host) {
+			issue("host-missing", "挖洞的造型或柜体不存在，没地方挂了");
+			return issues;
+		}
+		const thickness = "thickness" in host ? host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness : host.depth;
+		if (item.depth !== "through" && item.depth > thickness) issue("host-depth", `宿主只有 ${thickness} mm 厚，要挖墙请按墙面嵌入处理`);
+		const span = "thickness" in host ? panelSpan(plan, host) : void 0;
+		const width = span ? span.s[1] - span.s[0] : host.width, z = span?.z ?? host.z;
+		if (!item.rect.u || item.rect.u[0] < 0 || item.rect.u[1] > width || item.rect.z[0] < z[0] || item.rect.z[1] > z[1]) issue("out-of-face", "挖洞范围超出宿主");
+		return issues;
+	}
+	let e;
+	try {
+		e = wallEmbed(plan, item);
+	} catch {
+		issue("host-missing", "宿主墙不存在，没地方挂了");
+		return issues;
+	}
+	if (!e) {
+		if ("embed" in item && item.embed) issue("host-missing", "嵌入需要指定靠墙的墙面");
+		return issues;
+	}
+	let wall;
+	try {
+		wall = faceWall(plan, e.face);
+	} catch {
+		issue("host-missing", "宿主墙不存在，没地方挂了");
+		return issues;
+	}
+	if (wall.bulge) {
+		issue("arc-unsupported", "弧墙暂只支持整面材质，嵌入暂不支持");
+		return issues;
+	}
+	const run = faceRun(plan, e.face), lo = run[0].s[0], hi = run[run.length - 1].s[1];
+	if (e.s[0] < lo - 1e-5 || e.s[1] > hi + 1e-5 || e.z[0] < 0) issue("out-of-face", "超出这面墙了");
+	const axis = faceAxis(plan, e.face), covered = run.filter((p) => overlap(p.s, e.s));
+	for (const part of covered) {
+		const w = part.wall, depth = e.depth === "through" ? w.thickness : e.depth, extent = faceExtent(plan, part.face), visible = ordered(runS(part, extent[0]), runS(part, extent[1]));
+		if (faceIntervals(plan, part.face).map((v) => ordered(runS(part, v[0]), runS(part, v[1]))).reduce((sum, v) => sum + Math.max(0, Math.min(v[1], e.s[1]) - Math.max(v[0], e.s[0])), 0) < Math.min(part.s[1], e.s[1]) - Math.max(part.s[0], e.s[0]) - .01 || Math.max(e.s[0], part.s[0]) < visible[0] - .01 || Math.min(e.s[1], part.s[1]) > visible[1] + .01 || e.z[1] > effectiveWallHeight(plan, w) + 1e-7) issue("out-of-face", "超出这面墙看得见的范围或墙高了");
+		if (depth >= w.thickness) issue("through-wall", `挖到 ${w.thickness} mm 就穿了；请到改造里开洞，添加结构洞口`);
+		if (w.kind === "glass" || ["half", "half-glass"].includes(w.kind) && e.z[1] > (w.lowHeight ?? 1)) issue("wall-kind", w.kind === "glass" ? "玻璃隔断上挖不了" : `矮墙实体只有 ${w.lowHeight ?? 1} m 高`);
+		for (const o of plan.openings.filter((o) => o.wall === w.id)) if (overlap(e.s, ordered(runS(part, o.offset), runS(part, o.offset + o.width))) && overlap(e.z, [o.sill, o.head])) issue("over-opening", `这里是${o.kind.includes("window") ? "窗洞" : "门洞"} ${o.id}`);
+		const protectedWall = [w, originalPlan.walls.find((v) => v.id === w.id) ?? originalPlan.walls.filter((v) => w.id.startsWith(`${v.id}~`)).sort((a, b) => b.id.length - a.id.length)[0]].find((v) => v && ["bearing", "exterior"].includes(v.kind));
+		if (protectedWall) issues.push(protectedFact(item.id, protectedWall, protectedWall.kind === "exterior" ? "外墙" : "承重墙"));
+	}
+	for (const other of embedsOf(plan, decor)) {
+		if (other.id === item.id || !overlap(e.z, other.z)) continue;
+		const ow = faceWall(plan, other.face);
+		if (levelOf(plan, ow).id !== levelOf(plan, wall).id || ow.bulge) continue;
+		const oa = faceAxis(plan, other.face);
+		if (dot$2(axis.normal, oa.normal) > -.999999) continue;
+		const shared = covered.find((p) => p.wall.id === ow.id) ?? covered.find((p) => faceRun(plan, other.face).some((q) => q.wall.id === p.wall.id));
+		if (!shared) continue;
+		const projected = ordered(...other.s.map((s) => oa.at(s)).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall))));
+		const depth = e.depth === "through" ? shared.wall.thickness : e.depth, otherDepth = other.depth === "through" ? shared.wall.thickness : other.depth;
+		if (overlap(e.s, projected) && depth + otherDepth >= shared.wall.thickness) issue("meet-other-side", `这面墙另一侧也挖了 ${otherDepth} mm，两边合计 ${depth + otherDepth} mm，达到或超过墙厚 ${shared.wall.thickness} mm`);
+	}
+	const footprint = embedFootprint(plan, e), intersects = (poly) => intersection([[footprint]], [[poly]]).some((r) => polygonArea(r[0]) > 1e-6);
+	for (const s of plan.shafts ?? []) if (levelOf(plan, s).id === levelOf(plan, wall).id && intersects(s.poly)) issue("into-shaft", `这里是管道井 / 烟道 ${s.id} 的位置`);
+	for (const c of plan.columns ?? []) {
+		const original = originalPlan.columns?.find((v) => v.id === c.id), protectedColumn = c.kind === "bearing" ? c : original?.kind === "bearing" ? original : void 0;
+		if (protectedColumn && levelOf(plan, c).id === levelOf(plan, wall).id && intersects(columnFootprint(c))) issues.push(protectedFact(item.id, protectedColumn, "承重柱"));
+	}
+	return issues.filter((i, n) => issues.findIndex((j) => j.code === i.code && j.text === i.text) === n);
+}
+// src/core/decor/validate.ts
+var finite$3 = (x) => typeof x === "number" && Number.isFinite(x);
+var point$2 = (x) => Array.isArray(x) && x.length === 2 && x.every(finite$3);
+var interval = (x) => point$2(x) && x[1] > x[0];
+var obj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+var face = (x) => obj(x) && typeof x.wall === "string" && [1, -1].includes(x.side);
+var span = (x) => obj(x) && face(x.face) && interval(x.s) && interval(x.z);
+var positive = (x) => finite$3(x) && x > 0;
+var depth = (x) => x === "through" || positive(x);
+var optional = (x, check) => x === void 0 || check(x);
+var roles = [
+	"floor.main",
+	"floor.wet",
+	"floor.outdoor",
+	"threshold",
+	"wall.main",
+	"wall.wet",
+	"wall.accent",
+	"ceiling",
+	"skirting",
+	"wood.main",
+	"cabinet.front",
+	"cabinet.carcass",
+	"stone.top",
+	"metal",
+	"fabric.main",
+	"fabric.accent",
+	"rug"
+];
+function validateDecorData(plan, decor = plan.decor, originalPlan = plan) {
+	if (decor === void 0) return [];
+	originalPlan = replayOrigin(originalPlan)?.base ?? originalPlan;
+	const issues = [], add = (id, code, text, level = "error") => issues.push({
+		id,
+		code,
+		level,
+		text
+	});
+	const invalid = (id, text) => add(id, "invalid", text);
+	if (!obj(decor) || decor.version !== 1 || typeof decor.style !== "string") {
+		invalid("decor", "装修层必须是 version=1 的对象，并指定 style");
+		return issues;
+	}
+	for (const k of [
+		"materials",
+		"surfaces",
+		"furniture",
+		"cabinets",
+		"panels",
+		"recesses"
+	]) if (!Array.isArray(decor[k])) invalid("decor", `${k} 必须为数组`);
+	if (!optional(decor.doors, Array.isArray)) invalid("decor", "doors 必须为数组");
+	if (!optional(decor.components, Array.isArray)) invalid("decor", "components 必须为数组");
+	if (!optional(decor.presets, Array.isArray)) invalid("decor", "presets 必须为数组");
+	if (issues.length) return issues;
+	const structural = [
+		...plan.walls,
+		...plan.openings,
+		...plan.beams,
+		...plan.rooms,
+		...plan.questions,
+		...plan.changes,
+		...plan.levels ?? [],
+		...plan.columns ?? [],
+		...plan.shafts ?? [],
+		...plan.stairs ?? [],
+		...plan.voids ?? []
+	];
+	const seen = new Set(structural.map((e) => e.id)), levelIds = levelsOf(plan).map((l) => l.id);
+	const groups = {
+		doors: decor.doors ?? [],
+		components: decor.components ?? [],
+		materials: decor.materials,
+		presets: decor.presets ?? [],
+		surfaces: decor.surfaces,
+		furniture: decor.furniture,
+		cabinets: decor.cabinets,
+		panels: decor.panels,
+		recesses: decor.recesses
+	};
+	for (const [key, items] of Object.entries(groups)) for (const e of items) {
+		if (!obj(e) || typeof e.id !== "string" || !e.id) {
+			invalid("decor", `${key} 条目需要有效 id`);
+			continue;
+		}
+		if (seen.has(e.id)) add(e.id, key === "components" ? "component-invalid" : "duplicate-id", `重复 id：${e.id}`);
+		seen.add(e.id);
+		if (![
+			"materials",
+			"presets",
+			"components"
+		].includes(key) && (!["user", "agent"].includes(e.by) || !["pending", "confirmed"].includes(e.status))) invalid(e.id, "构件必须指定 by 和 status");
+		if (e.look !== void 0 && (typeof e.look !== "string" || [...e.look].length > 300)) invalid(e.id, "look 必须是最多 300 字的字符串");
+		if (e.level !== void 0 && !levelIds.includes(e.level)) invalid(e.id, "楼层不存在");
+		if (e.ack !== void 0 && (!obj(e.ack) || typeof e.ack.by !== "string")) invalid(e.id, "ack 需要 by");
+	}
+	if (issues.some((i) => i.code === "invalid")) return issues;
+	const materialIds = new Set(decor.materials.map((m) => m.id)), mat = (id, value) => {
+		if (typeof value !== "string" || !materialIds.has(value)) add(id, "material-missing", `材料 ${String(value)} 未保存在 decor.materials`);
+	};
+	for (const def of decor.components ?? []) issues.push(...validateComponent(def, materialIds));
+	const unit = (id) => add(id, "unit-suspect", "可能把 mm 写成了 m：文件里长度和高度一律是 mm，比如 850");
+	for (const item of [
+		...decor.cabinets,
+		...decor.panels,
+		...decor.recesses
+	]) {
+		const z = "columns" in item ? item.z : "rect" in item ? item.rect?.z : item.span?.z;
+		if (z && (z[1] - z[0] < .01 || z[1] - z[0] > 10)) unit(item.id);
+	}
+	for (const m of decor.materials) {
+		if (typeof m.name !== "string" || ![
+			"wood-floor",
+			"tile",
+			"stone",
+			"paint",
+			"texture-paint",
+			"wallpaper",
+			"veneer",
+			"microcement",
+			"laminate",
+			"fabric",
+			"leather",
+			"metal",
+			"glass",
+			"rattan",
+			"other"
+		].includes(m.category) || typeof m.color !== "string" || !/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(m.color)) invalid(m.id, "材料名称、分类或 sRGB 十六进制颜色无效");
+		if (m.texture && (!obj(m.texture) || ![
+			"planks",
+			"tiles",
+			"herringbone",
+			"grain",
+			"speckle",
+			"veins",
+			"weave"
+		].includes(m.texture.kind) || !optional(m.texture.size, (x) => point$2(x) && x.every(positive)) || !optional(m.texture.joint, (x) => finite$3(x) && x >= 0))) invalid(m.id, "材料纹理参数无效");
+		if (m.pbr) {
+			if (!obj(m.pbr)) invalid(m.id, "PBR 必须是对象");
+			for (const v of [
+				m.pbr.roughness,
+				m.pbr.metalness,
+				m.pbr.sheen
+			]) if (!optional(v, (x) => finite$3(x) && x >= 0 && x <= 1)) invalid(m.id, "PBR 系数须在 0–1");
+			if (m.pbr.maps && !obj(m.pbr.maps)) invalid(m.id, "贴图必须是本地路径对象");
+			for (const path of Object.values(m.pbr.maps ?? {})) if (typeof path !== "string" || !path.trim() || /^(?:[a-z][a-z\d+.-]*:|[/\\])/i.test(path.trim())) invalid(m.id, "贴图只能是本地相对路径，禁止远程地址、协议和绝对路径");
+		}
+	}
+	for (const p of decor.presets ?? []) {
+		if (typeof p.name !== "string" || !obj(p.roles) || Object.keys(p.roles).some((r) => !roles.includes(r))) {
+			invalid(p.id, "风格名称或材料角色无效");
+			continue;
+		}
+		Object.values(p.roles).forEach((v) => mat(p.id, v));
+		if (p.rooms && (!Array.isArray(p.rooms) || p.rooms.some((r) => !obj(r) || !Array.isArray(r.match) || !r.match.every((x) => typeof x === "string") || r.floor && !roles.includes(r.floor) || r.wall && !roles.includes(r.wall)))) invalid(p.id, "房间材料规则无效");
+	}
+	if (![...STYLE_PRESETS, ...decor.presets ?? []].some((s) => s.id === decor.style)) invalid("decor", "整体风格不存在");
+	for (const s of decor.surfaces) {
+		const t = s.target;
+		if (!obj(t) || Object.keys(t).filter((k) => [
+			"floor",
+			"ceiling",
+			"face"
+		].includes(k)).length !== 1 || ("face" in t ? !face(t.face) || !optional(t.s, interval) || !optional(t.z, interval) : !("floor" in t || "ceiling" in t))) invalid(s.id, "面的覆盖需要一种有效目标及递增区间");
+		mat(s.id, s.material);
+		if (s.layout && (![
+			"straight",
+			"staggered",
+			"herringbone",
+			"chevron",
+			"grid",
+			"diagonal"
+		].includes(s.layout.pattern) || !optional(s.layout.size, (x) => point$2(x) && x.every(positive)) || !optional(s.layout.origin, point$2) || !optional(s.layout.angle, finite$3))) invalid(s.id, "铺法参数无效");
+	}
+	const doorOpenings = /* @__PURE__ */ new Set();
+	const doorPlan = decor.doors?.length && !plan.legacy?.__structureReplayFrame ? applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan : plan;
+	const lastOpening = (id) => {
+		const changes = originalPlan.changes.filter((c) => c.status === "confirmed");
+		for (let end = changes.length - 1; end > 0; end--) {
+			const opening = applyChanges(originalPlan, changes.slice(0, end)).plan.openings.find((o) => o.id === id);
+			if (opening) return opening;
+		}
+		return originalPlan.openings.find((o) => o.id === id);
+	};
+	for (const d of decor.doors ?? []) {
+		if (typeof d.opening !== "string" || !d.opening) {
+			invalid(d.id, "门的外观需要 opening id");
+			continue;
+		}
+		if (doorOpenings.has(d.opening)) invalid(d.id, `洞口 ${d.opening} 只能有一条门的外观`);
+		doorOpenings.add(d.opening);
+		const current = doorPlan.openings.find((o) => o.id === d.opening), opening = current ?? lastOpening(d.opening);
+		if (!opening) invalid(d.id, `opening ${d.opening} 不存在，请核对洞口 id`);
+		else {
+			if (opening.kind === "doorway") invalid(d.id, "门洞没有门扇，要做门套用造型 arch");
+			else if (!["door", "sliding"].includes(opening.kind) || Math.abs(opening.sill) > 1e-7) invalid(d.id, "opening 必须是洞底贴地、有门扇的 door 或 sliding");
+			if (!current) add(d.id, "host-missing", `洞口 ${d.opening} 已拆除，门的外观没地方挂了`, "info");
+			if (d.front !== void 0) validateComponentPaths(d.front, opening.width, (opening.head - opening.sill) * 1e3, (field, message) => invalid(d.id, `front${field}：${message}`));
+		}
+		const color = (value) => {
+			if (value !== void 0 && !(typeof value === "string" && /^#[\da-f]{6}$/i.test(value))) mat(d.id, value);
+		};
+		color(d.color);
+		if (d.material !== void 0) mat(d.id, d.material);
+		if (d.frame !== void 0) {
+			if (!obj(d.frame)) invalid(d.id, "frame 必须是门框外观对象");
+			else {
+				color(d.frame.color);
+				if (d.frame.material !== void 0) mat(d.id, d.frame.material);
+			}
+		}
+		if (d.flip !== void 0 && typeof d.flip !== "boolean") invalid(d.id, "flip 必须为布尔值");
+	}
+	for (const f of decor.furniture) {
+		if (typeof f.type !== "string" || (f.in !== void 0 ? typeof f.in !== "string" || !f.in || f.at !== void 0 : !point$2(f.at)) || !point$2(f.size) || !f.size.every(positive) || !positive(f.height) || !(f.in ? optional(f.rot, finite$3) : finite$3(f.rot)) || !optional(f.z, finite$3) || !optional(f.embed, (x) => finite$3(x) && x >= 0) || f.against && (!face(f.against.face) || !finite$3(f.against.gap) || f.against.gap < 0)) invalid(f.id, "家具位置、尺寸、高度、旋转或靠墙参数无效");
+		if (f.height < .003 || f.height > 10 || f.size?.some((v) => v < 10)) unit(f.id);
+		if (isCustomType(f.type)) {
+			const def = componentOf(decor, f.type);
+			if (!def) add(f.id, "component-missing", `构件定义 ${f.type.slice(7)} 不存在，请先写 component`);
+			else if (Math.abs(f.height * 1e3 - def.height) > 1 || f.size?.some((v, i) => Math.abs(v - def.size[i]) > 1)) unit(f.id);
+		} else if (typeof f.type === "string" && !FURNITURE_LIBRARY.some((e) => e.type === f.type)) {
+			const near = [...FURNITURE_LIBRARY].sort((a, b) => editDistance(f.type, a.type) - editDistance(f.type, b.type)).slice(0, 3);
+			add(f.id, "unknown-type", `未知家具 type ${f.type}；最接近的 id：${near.map((e) => e.type).join("、")}，请用 decor-list 核对`, "warn");
+		}
+		if (f.flip !== void 0 && typeof f.flip !== "boolean") invalid(f.id, "flip 必须为布尔值");
+		Object.values(f.materials ?? {}).forEach((v) => mat(f.id, v));
+	}
+	for (const c of decor.cabinets) {
+		if (![
+			"tall",
+			"base",
+			"wall"
+		].includes(c.family) || !obj(c.place) || ("face" in c.place ? !face(c.place.face) || !finite$3(c.place.s) || !optional(c.place.gap, (x) => finite$3(x) && x >= 0) : !("at" in c.place) || !point$2(c.place.at) || !finite$3(c.place.rot)) || !positive(c.width) || !positive(c.depth) || !interval(c.z) || !optional(c.plinth, (x) => finite$3(x) && x >= 0) || !optional(c.embed, (x) => finite$3(x) && x >= 0) || !Array.isArray(c.columns) || !obj(c.materials)) {
+			invalid(c.id, "柜体位置、尺寸、分列或材料无效");
+			continue;
+		}
+		mat(c.id, c.materials.carcass);
+		mat(c.id, c.materials.front);
+		if (c.top && (!positive(c.top.thickness) || !optional(c.top.overhang, (x) => finite$3(x) && x >= 0))) invalid(c.id, "台面尺寸无效");
+		if (c.top) mat(c.id, c.top.material);
+		if (c.cuts && (!Array.isArray(c.cuts) || c.cuts.some((x) => !obj(x) || !interval(x.u) || !interval(x.z) || !depth(x.depth)))) invalid(c.id, "柜体挖洞参数无效");
+		for (const col of c.columns) {
+			if (!obj(col) || !optional(col.width, positive) || !Array.isArray(col.cells)) {
+				invalid(c.id, "柜列参数无效");
+				continue;
+			}
+			for (const cell of col.cells) {
+				if (!obj(cell) || ![
+					"door",
+					"doors",
+					"drawers",
+					"flap",
+					"open",
+					"void",
+					"appliance"
+				].includes(cell.type) || !optional(cell.h, positive) || !optional(cell.count, (x) => Number.isInteger(x) && x >= 0 && x <= 1e3) || !optional(cell.hinge, (x) => ["left", "right"].includes(x))) {
+					invalid(c.id, "柜格参数无效");
+					continue;
+				}
+				if (cell.void && (!obj(cell.void) || !depth(cell.void.depth) || cell.void.top && !finite$3(cell.void.top.z))) invalid(c.id, "柜格挖洞参数无效");
+				if (cell.appliance && (!obj(cell.appliance) || ![
+					"fridge",
+					"washer",
+					"dryer",
+					"oven",
+					"steamer",
+					"dishwasher",
+					"microwave",
+					"tv",
+					"other"
+				].includes(cell.appliance.type) || !optional(cell.appliance.size, (x) => Array.isArray(x) && x.length === 3 && x.every(positive)))) invalid(c.id, "家电位参数无效");
+				if (cell.material) mat(c.id, cell.material);
+				if (cell.void?.top?.material) mat(c.id, cell.void.top.material);
+			}
+		}
+	}
+	for (const p of decor.panels) {
+		if (![
+			"feature",
+			"wainscot",
+			"slats",
+			"skirting",
+			"arch"
+		].includes(p.type) || !positive(p.thickness) || (p.type === "arch" ? typeof p.opening !== "string" || !optional(p.span, span) : !span(p.span))) invalid(p.id, "造型类型、厚度或宿主区间无效");
+		if (p.grooves && (!["v", "h"].includes(p.grooves.dir) || !positive(p.grooves.spacing) || !optional(p.grooves.width, positive))) invalid(p.id, "分缝参数无效");
+		if (p.slats && (!positive(p.slats.width) || !finite$3(p.slats.gap) || p.slats.gap < 0 || !positive(p.slats.depth))) invalid(p.id, "格栅尺寸无效");
+		if (p.frame && (!["flat", "raised"].includes(p.frame.style) || !positive(p.frame.margin))) invalid(p.id, "框线参数无效");
+		if (p.arch && !optional(p.arch.radius, positive)) invalid(p.id, "拱半径无效");
+		mat(p.id, p.material);
+	}
+	for (const r of decor.recesses) {
+		if (!obj(r.host) || Object.keys(r.host).length !== 1 || !obj(r.rect) || !interval(r.rect.z) || !depth(r.depth) || ("face" in r.host ? !face(r.host.face) || !interval(r.rect.s) || r.rect.u !== void 0 || r.kind !== "niche" : !("panel" in r.host || "cabinet" in r.host) || !interval(r.rect.u) || r.rect.s !== void 0 || r.kind !== "hole")) invalid(r.id, "壁龛 / 挖洞的宿主、类型、区间或深度无效");
+		if (r.shelves && (!Array.isArray(r.shelves) || r.shelves.some((h) => !finite$3(h) || h <= r.rect.z[0] || h >= r.rect.z[1]))) invalid(r.id, "层板须在壁龛高度内");
+		if (r.back) mat(r.id, r.back);
+		if (r.trim) mat(r.id, r.trim);
+	}
+	if (decor.cache && (!obj(decor.cache) || Object.values(decor.cache).some((c) => !obj(c) || !Array.isArray(c.box) || c.box.length !== 4 || !c.box.every(finite$3) || c.face && (!Array.isArray(c.face) || c.face.length !== 2 || !c.face.every(point$2))))) invalid("decor", "cache 几何无效");
+	for (const c of Object.values(decor.cache ?? {})) {
+		if (c.pose && (!point$2(c.pose.at) || !finite$3(c.pose.rot) || !finite$3(c.pose.z))) invalid("decor", "cache.pose 几何无效");
+		if (c.anchor && (typeof c.anchor.wall !== "string" || !point$2(c.anchor.a) || !point$2(c.anchor.b))) invalid("decor", "cache.anchor 几何无效");
+	}
+	if (issues.some((i) => i.code === "invalid")) return issues;
+	const checkSpan = (id, sp, embedded = false, into = false) => {
+		try {
+			const f = faceFrame(plan, sp), run = faceRun(plan, sp.face);
+			if (sp.z[0] < 0 || run.filter((p) => overlap(p.s, sp.s)).some((p) => {
+				const e = faceExtent(plan, p.face), s = ordered(runS(p, e[0]), runS(p, e[1]));
+				return Math.max(sp.s[0], p.s[0]) < s[0] - .01 || Math.min(sp.s[1], p.s[1]) > s[1] + .01 || sp.z[1] > effectiveWallHeight(plan, p.wall) + 1e-7;
+			})) add(id, "out-of-face", "超出这面墙看得见的范围或墙高了");
+			if (embedded && (f.wall.kind === "glass" || ["half", "half-glass"].includes(f.wall.kind) && sp.z[1] > (f.wall.lowHeight ?? 1))) add(id, "wall-kind", "玻璃或矮墙实体范围无法容纳这件柜子");
+			if (embedded) {
+				for (const part of run) for (const o of plan.openings.filter((o) => o.wall === part.wall.id)) if (overlap(sp.s, ordered(runS(part, o.offset), runS(part, o.offset + o.width))) && overlap(sp.z, [o.sill, o.head])) add(id, "over-opening", into ? `柜子嵌进墙的部分撞到洞口 ${o.id}，这样做不了` : `柜子挡住了${o.kind.includes("window") ? "窗" : "门"} ${o.name ?? o.id}`, into ? "error" : "warn");
+			}
+		} catch (e) {
+			add(id, e.code ?? "invalid", e.message);
+		}
+	};
+	for (const p of decor.panels) try {
+		checkSpan(p.id, panelSpan(plan, p));
+	} catch (e) {
+		add(p.id, "host-missing", e.message);
+	}
+	for (const c of decor.cabinets) {
+		issues.push(...layoutCabinet(c).issues);
+		if ("face" in c.place) checkSpan(c.id, {
+			face: c.place.face,
+			s: [c.place.s, c.place.s + c.width],
+			z: c.z
+		}, true, !!c.embed);
+	}
+	for (const item of [
+		...decor.recesses,
+		...decor.cabinets,
+		...decor.furniture
+	]) try {
+		issues.push(...checkEmbed(plan, decor, item, originalPlan));
+	} catch (e) {
+		add(item.id, "host-missing", e.message);
+	}
+	for (const f of decor.furniture) {
+		if (f.against && !plan.walls.some((w) => w.id === f.against.face.wall)) add(f.id, "host-missing", "靠墙家具的墙不存在，请核对 against.face.wall");
+		if (f.in && furniturePose({
+			...plan,
+			decor
+		}, f).missing) add(f.id, "host-missing", `家具宿主 ${f.in} 不存在`);
+		if (f.against && !f.in && !isFlatFurniture(decor, f)) try {
+			const wall = plan.walls.find((w) => w.id === f.against.face.wall);
+			if (wall) {
+				const ss = furnitureFootprint(f, plan).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall))), span = [Math.min(...ss), Math.max(...ss)], z = [f.z ?? 0, (f.z ?? 0) + f.height];
+				const hit = faceRun(plan, f.against.face).flatMap((part) => plan.openings.filter((o) => o.wall === part.wall.id && overlap(span, ordered(runS(part, o.offset), runS(part, o.offset + o.width))) && overlap(z, [o.sill, o.head])));
+				if (hit.length) {
+					const names = [...new Set(hit.map(openingWord))].join("、");
+					add(f.id, "over-opening", `压在${names}${/[\x21-\x7e]$/.test(names) ? " " : ""}上`, "warn");
+				}
+			}
+		} catch {}
+	}
+	for (const s of decor.surfaces) if ("face" in s.target) {
+		const t = s.target, w = plan.walls.find((w) => w.id === t.face.wall);
+		if (!w) add(s.id, "host-missing", "墙面不存在");
+		else if (w.bulge && (t.s || t.z)) add(s.id, "arc-unsupported", "弧墙暂只支持整面材质");
+		else if (t.s || t.z) checkSpan(s.id, {
+			face: t.face,
+			s: t.s ?? faceExtent(plan, t.face),
+			z: t.z ?? [0, effectiveWallHeight(plan, w)]
+		});
+	} else if (!plan.rooms.some((r) => r.id === ("floor" in s.target ? s.target.floor : "ceiling" in s.target ? s.target.ceiling : ""))) add(s.id, "room-missing", "目标房间不存在，请核对房间 id", originalPlan !== plan && originalPlan.rooms.some((r) => r.id === ("floor" in s.target ? s.target.floor : "ceiling" in s.target ? s.target.ceiling : "")) ? "info" : "error");
+	return issues.filter((i, n) => issues.findIndex((j) => j.id === i.id && j.code === i.code && j.text === i.text) === n);
+}
+/** Imported JSON is untrusted: malformed nested fields are diagnostics, never exceptions. */
+function validateDecorRaw(plan, decor = plan.decor, originalPlan = plan) {
+	try {
+		const issues = validateDecorData(plan, decor, originalPlan);
+		if (!decor || issues.some((i) => i.code === "invalid")) return issues;
+		const previous = structuredClone(decor), ids = /* @__PURE__ */ new Set();
+		for (const key of [
+			"furniture",
+			"cabinets",
+			"panels",
+			"recesses",
+			"surfaces",
+			"doors"
+		]) if (previous[key]) previous[key] = previous[key].map((item) => {
+			if (item.prev === void 0) return item;
+			if (!obj(item.prev) || item.status !== "pending" || item.prev.id !== item.id || item.prev.status !== "confirmed" || item.prev.prev !== void 0) {
+				issues.push({
+					id: item.id,
+					code: "invalid",
+					level: "error",
+					text: "prev 必须是同 id 的完整 confirmed 项，不能嵌套 prev，且仅 pending 项可携带"
+				});
+				return item;
+			}
+			ids.add(item.id);
+			return item.prev;
+		});
+		if (ids.size) issues.push(...validateDecorData({
+			...plan,
+			decor: previous
+		}, previous, originalPlan).filter((i) => ids.has(i.id)).map((i) => ({
+			...i,
+			text: `prev：${i.text}`
+		})));
+		return issues;
+	} catch (error) {
+		return [{
+			id: "decor",
+			code: "invalid",
+			level: "error",
+			text: `装修数据结构无效：${error instanceof Error ? error.message : String(error)}`
+		}];
+	}
+}
+/** Host diagnostics use the same resolution as the status UI; malformed input stays diagnostic-only. */
+function validateDecor(plan, decor = plan.decor, originalPlan = replayOrigin(plan)?.base ?? plan) {
+	const raw = validateDecorRaw(plan, decor, originalPlan);
+	if (raw.some((i) => i.code === "invalid") || !decor) return raw;
+	try {
+		return originalPlan !== plan ? resolveDecor({
+			...originalPlan,
+			decor
+		}, plan).issues : decorStatus({
+			...plan,
+			decor
+		}).issues;
+	} catch {
+		return raw;
+	}
+}
+var openingWord = (o) => {
+	const word = o.kind.includes("window") || o.kind === "open-balcony" ? "窗" : "门";
+	return o.name ? o.name.includes(word) ? o.name : `${o.name}${word}` : `${word} ${o.id}`;
+};
+function editDistance(a, b) {
+	let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+	for (let i = 0; i < a.length; i++) {
+		const next = [i + 1];
+		for (let j = 0; j < b.length; j++) next.push(Math.min(next[j] + 1, row[j + 1] + 1, row[j] + (a[i] === b[j] ? 0 : 1)));
+		row = next;
+	}
+	return row[b.length];
+}
+// src/core/decor/integration.ts
+function decorStats(plan) {
+	const d = plan.decor;
+	if (!d) return void 0;
+	const after = plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan;
+	const resolved = resolveDecor(plan, after);
+	return {
+		doors: d.doors?.length ?? 0,
+		furniture: d.furniture.length,
+		cabinets: d.cabinets.length,
+		panels: d.panels.length,
+		recesses: d.recesses.length,
+		surfaces: d.surfaces.length,
+		materials: d.materials.length,
+		pending: decorItems(d).filter((x) => x.status === "pending").length,
+		total: decorItems(d).length,
+		issues: resolved.issues.length,
+		materialAreas: materialTakeoff({
+			...after,
+			decor: resolved.decor
+		})
+	};
+}
+/** Only confirmed structural changes are the decor host context; never replay a changed view twice. */
+function validatePlanDecor(plan) {
+	if (plan.decor === void 0) return [];
+	const shape = validateDecor(plan).filter((i) => [
+		"invalid",
+		"duplicate-id",
+		"material-missing"
+	].includes(i.code));
+	if (shape.some((i) => i.code === "invalid")) return shape;
+	return resolveDecor(plan, plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan).issues;
+}
+// src/core/questions.ts
+var QUESTION_STATUSES = [
+	"open",
+	"answered",
+	"resolved"
+];
+var QUESTION_OUTCOMES = [
+	"changed",
+	"confirmed",
+	"inferred",
+	"noted",
+	"ask",
+	"withdrawn"
+];
+function questionStatus(q) {
+	if (QUESTION_STATUSES.includes(q.status)) return q.status;
+	if (!q.answer?.trim()) return "open";
+	if (!q.reply) return "answered";
+	return q.reply.outcome === "ask" ? "open" : "resolved";
+}
+function questionCounts(plan) {
+	const counts = {
+		open: 0,
+		answered: 0,
+		resolved: 0
+	};
+	for (const q of plan.questions) counts[questionStatus(q)]++;
+	return counts;
+}
+function answerQuestion(q, text, by, at) {
+	text = text.trim();
+	if (!text) throw new Error(`问题卡 ${q.id}：答复不能为空，请填写答复`);
+	const next = { ...q };
+	if (q.reply) {
+		next.log = [...q.log ?? []];
+		if (q.answer?.trim()) next.log.push({
+			role: "user",
+			text: q.answer,
+			by: q.answeredBy,
+			at: q.answeredAt
+		});
+		next.log.push({
+			role: "agent",
+			...q.reply,
+			...q.reply.changed ? { changed: [...q.reply.changed] } : {}
+		});
+		delete next.reply;
+	}
+	return {
+		...next,
+		answer: text,
+		answeredBy: by,
+		answeredAt: at,
+		status: "answered"
+	};
+}
+function resolveQuestion(q, { outcome, text, changed, by = "Agent", at }) {
+	const status = questionStatus(q);
+	if (!QUESTION_OUTCOMES.includes(outcome)) throw new Error(`问题卡 ${q.id}：不认识处理结果 ${outcome}，请使用 ${QUESTION_OUTCOMES.join("、")}`);
+	if (status !== "answered" && !(outcome === "withdrawn" && status === "open")) throw new Error(`问题卡 ${q.id}：现在是 ${status}（${status === "open" ? "待回答" : "已处理"}），请先记录用户答复，status 变为 answered 后再处理${status === "open" ? "；不用再问可用 withdrawn 撤回" : ""}`);
+	text = text.trim();
+	if (!text) throw new Error(`问题卡 ${q.id}：回复不能为空，请说明处理结果`);
+	return {
+		...q,
+		status: outcome === "ask" ? "open" : "resolved",
+		reply: {
+			outcome,
+			text,
+			...changed ? { changed: [...new Set(changed)] } : {},
+			by,
+			at
+		}
+	};
+}
+/** 包括原始构件及成功改造产生的构件（即使后续又移除）。 */
+function questionElementIds(plan) {
+	const ids = new Set(Object.keys(collection).flatMap((type) => elements(plan, type).map((e) => e.id)));
+	if (plan.changes.length) {
+		for (const r of applyChanges(plan, plan.changes).results) if (r.ok) for (const id of r.affected) ids.add(id);
+	}
+	return ids;
+}
+// src/core/validate.ts
+var WALL_KINDS = [
+	"exterior",
+	"bearing",
+	"partition",
+	"glass",
+	"half",
+	"half-glass"
+];
+var OPENING_KINDS = [
+	"door",
+	"sliding",
+	"doorway",
+	"window",
+	"floor-window",
+	"bay-window",
+	"open-balcony"
+];
+var finite$2 = (x) => typeof x === "number" && Number.isFinite(x);
+var point$1 = (p) => Array.isArray(p) && p.length === 2 && p.every(finite$2);
+function intersects$1(a, b, c, d) {
+	const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+	const on = (p, q, r) => Math.abs(cross(p, q, r)) < 1e-7 && r[0] >= Math.min(p[0], q[0]) && r[0] <= Math.max(p[0], q[0]) && r[1] >= Math.min(p[1], q[1]) && r[1] <= Math.max(p[1], q[1]);
+	const x = cross(a, b, c), y = cross(a, b, d), z = cross(c, d, a), w = cross(c, d, b);
+	return x * y < 0 && z * w < 0 || on(a, b, c) || on(a, b, d) || on(c, d, a) || on(c, d, b);
+}
+function invalidPolygon(poly) {
+	if (polygonArea(poly) < 1e-7) return true;
+	for (let i = 0; i < poly.length; i++) {
+		const a = poly[i], b = poly[(i + 1) % poly.length];
+		if (a[0] === b[0] && a[1] === b[1]) return true;
+		for (let j = i + 1; j < poly.length; j++) if (j !== i + 1 && !(i === 0 && j === poly.length - 1) && intersects$1(a, b, poly[j], poly[(j + 1) % poly.length])) return true;
+	}
+	return false;
+}
+function validatePlan(plan) {
+	const issues = [], error = (code, message, ref) => issues.push({
+		level: "error",
+		code,
+		message,
+		...ref ? { ref } : {}
+	});
+	if (!plan || typeof plan !== "object") {
+		error("shape", "方案必须是对象");
+		return issues;
+	}
+	if (plan.format !== "floorplan-structure" || plan.version !== 2) error("format", "方案必须使用 floorplan-structure v2");
+	if (typeof plan.title !== "string" || !finite$2(plan.ceiling) || plan.ceiling <= 0) error("plan", "方案标题或层高无效");
+	for (const k of [
+		"walls",
+		"openings",
+		"beams",
+		"rooms",
+		"questions",
+		"changes"
+	]) if (!Array.isArray(plan[k])) error("shape", `${k} 必须是数组`);
+	for (const k of [
+		"levels",
+		"columns",
+		"shafts",
+		"stairs",
+		"voids"
+	]) if (plan[k] !== void 0 && !Array.isArray(plan[k])) error("shape", `${k} 必须是数组`);
+	if (issues.some((i) => i.code === "shape")) return issues;
+	const seen = /* @__PURE__ */ new Set();
+	for (const [type, items] of Object.entries({
+		wall: plan.walls,
+		opening: plan.openings,
+		beam: plan.beams,
+		room: plan.rooms,
+		question: plan.questions,
+		change: plan.changes,
+		level: plan.levels ?? [],
+		column: plan.columns ?? [],
+		shaft: plan.shafts ?? [],
+		stair: plan.stairs ?? [],
+		void: plan.voids ?? []
+	})) for (const item of items) {
+		if (!item || typeof item !== "object") {
+			error("shape", `${type} 包含非对象条目`);
+			continue;
+		}
+		const ref = [
+			"wall",
+			"opening",
+			"beam",
+			"room",
+			"column",
+			"shaft",
+			"stair",
+			"void"
+		].includes(type) ? {
+			type,
+			id: item.id
+		} : void 0;
+		if (typeof item.id !== "string" || !item.id) error("id", `${type} 缺少有效 id`, ref);
+		else if (seen.has(item.id)) error("duplicate-id", `重复 id：${item.id}`, ref);
+		else seen.add(item.id);
+		if ("evidence" in item && item.evidence && ![
+			"seen",
+			"inferred",
+			"unknown"
+		].includes(item.evidence.certainty)) error("enum", `${item.id} 的证据确定度不认识`, ref);
+	}
+	if (issues.some((i) => i.code === "shape")) return issues;
+	const levels = levelsOf(plan).filter(Boolean), levelIds = new Set(levels.map((l) => l.id));
+	if (plan.levels && !plan.levels.length) error("levels", "levels 至少包含一层，单层可省略 levels");
+	levels.forEach((l, i) => {
+		if (typeof l.name !== "string" || !finite$2(l.elevation) || l.ceiling !== void 0 && (!finite$2(l.ceiling) || l.ceiling <= 0)) error("level", `楼层 ${l.id} 的名称、标高或层高无效`);
+		if (i > 0 && l.elevation <= levels[i - 1].elevation) error("level-order", "各层标高必须按数组顺序严格递增");
+	});
+	for (const e of [
+		...plan.walls,
+		...plan.beams,
+		...plan.rooms,
+		...plan.questions,
+		...plan.columns ?? [],
+		...plan.shafts ?? [],
+		...plan.stairs ?? [],
+		...plan.voids ?? []
+	].filter(Boolean)) if (e.level !== void 0 && !levelIds.has(e.level)) error("level-reference", `构件 ${e.id} 的楼层 ${e.level} 不存在`);
+	for (const e of [
+		...plan.shafts ?? [],
+		...plan.stairs ?? [],
+		...plan.voids ?? []
+	].filter(Boolean)) {
+		if (!Array.isArray(e.poly) || e.poly.length < 3 || !e.poly.every(point$1)) {
+			error("extra-points", `构件 ${e.id} 需要至少三个有效顶点`);
+			continue;
+		}
+		if (invalidPolygon(e.poly)) error("extra-polygon", `构件 ${e.id} 多边形退化或自交`);
+	}
+	for (const c of (plan.columns ?? []).filter(Boolean)) {
+		if (!point$1(c.center) || !point$1(c.size) || c.size.some((s) => s <= 0) || c.shape === "round" && c.size[0] !== c.size[1] || c.rotation !== void 0 && !finite$2(c.rotation)) error("column", `柱 ${c.id} 的位置、尺寸或旋转无效`);
+		if (!["rect", "round"].includes(c.shape) || !["bearing", "decorative"].includes(c.kind)) error("enum", `柱 ${c.id} 的类型无效`);
+	}
+	for (const s of (plan.shafts ?? []).filter(Boolean)) if (![
+		"flue",
+		"pipe",
+		"vent",
+		"other"
+	].includes(s.kind)) error("enum", `管道井 ${s.id} 类型无效`);
+	for (const s of (plan.stairs ?? []).filter(Boolean)) {
+		if (!levelIds.has(s.level) || !levelIds.has(s.to) || s.level === s.to) error("stair-level", `楼梯 ${s.id} 的起止楼层必须存在且不同`);
+		else if (levels.find((l) => l.id === s.to).elevation <= levels.find((l) => l.id === s.level).elevation) error("stair-direction", `楼梯 ${s.id} 的目标层必须高于起点层`);
+		if (!Array.isArray(s.path) || s.path.length < 2 || !s.path.every(point$1) || s.path.slice(1).some((p, i) => p[0] === s.path[i][0] && p[1] === s.path[i][1])) error("stair-path", `楼梯 ${s.id} 的上行路径需要至少两个不重合的有效点`);
+		if (!finite$2(s.width) || s.width <= 0 || s.steps !== void 0 && (!Number.isInteger(s.steps) || s.steps <= 0)) error("stair-size", `楼梯 ${s.id} 的宽度或踏步数无效`);
+		if (![
+			"straight",
+			"L",
+			"U",
+			"spiral"
+		].includes(s.kind)) error("enum", `楼梯 ${s.id} 类型无效`);
+	}
+	for (const v of (plan.voids ?? []).filter(Boolean)) if (!levelIds.has(v.level)) error("level-reference", `挑空 ${v.id} 必须指定有效楼层`);
+	const validWalls = plan.walls.filter((w) => w && point$1(w.a) && point$1(w.b) && (w.bulge === void 0 || finite$2(w.bulge)));
+	const safePlan = {
+		...plan,
+		walls: validWalls,
+		rooms: plan.rooms.filter((r) => r && Array.isArray(r.poly) && r.poly.every(point$1))
+	};
+	for (const w of plan.walls.filter(Boolean)) {
+		const ref = {
+			type: "wall",
+			id: w.id
+		};
+		if (!validWalls.includes(w) || !finite$2(w.thickness) || w.thickness <= 0 || validWalls.includes(w) && wallLength(w) <= 1e-7) error("wall-geometry", `墙 ${w.id} 的端点、厚度或长度无效`, ref);
+		if (!WALL_KINDS.includes(w.kind)) error("enum", `墙 ${w.id} 的类型不认识`, ref);
+		if (w.height !== void 0 && (!finite$2(w.height) || w.height <= 0) || w.lowHeight !== void 0 && (!finite$2(w.lowHeight) || w.lowHeight < 0)) error("height", `墙 ${w.id} 的高度无效`, ref);
+	}
+	for (const o of plan.openings.filter(Boolean)) {
+		const ref = {
+			type: "opening",
+			id: o.id
+		}, w = validWalls.find((w) => w.id === o.wall);
+		if (!OPENING_KINDS.includes(o.kind)) error("enum", `洞口 ${o.id} 的类型不认识`, ref);
+		if (!w) error("opening-host", `洞口 ${o.id} 的宿主墙 ${o.wall} 不存在或几何无效`, ref);
+		else {
+			if (![o.offset, o.width].every(finite$2) || o.width <= 0 || o.offset < 0 || o.offset + o.width > wallLength(w) + 1e-5) error("opening-range", `洞口 ${o.id} 超出墙长或宽度无效`, ref);
+			if (o.head > effectiveWallHeight(safePlan, w) + 1e-7) error("opening-head", `洞口 ${o.id} 洞顶超过墙高`, ref);
+		}
+		if (![o.sill, o.head].every(finite$2) || o.sill < 0 || o.sill >= o.head) error("opening-height", `洞口 ${o.id} 洞底必须非负且低于洞顶`, ref);
+		if (o.swing && (!["start", "end"].includes(o.swing.hinge) || ![1, -1].includes(o.swing.side))) error("enum", `洞口 ${o.id} 开向无效`, ref);
+		if (o.panes && (!Array.isArray(o.panes) || !o.panes.length || o.panes.some((p) => !p || !finite$2(p.width) || p.width <= 0 || ![
+			"fixed",
+			"casement",
+			"sliding"
+		].includes(p.kind)))) error("pane", `洞口 ${o.id} 分扇比例或类型无效`, ref);
+	}
+	for (let i = 0; i < plan.openings.length; i++) for (let j = i + 1; j < plan.openings.length; j++) {
+		const a = plan.openings[i], b = plan.openings[j];
+		if (a && b && a.wall === b.wall && Math.min(a.offset + a.width, b.offset + b.width) - Math.max(a.offset, b.offset) > 1e-5) error("opening-overlap", `同墙洞口 ${a.id} 与 ${b.id} 重叠`, {
+			type: "opening",
+			id: a.id
+		});
+	}
+	for (const r of plan.rooms.filter(Boolean)) {
+		const ref = {
+			type: "room",
+			id: r.id
+		};
+		if (typeof r.name !== "string" || !Array.isArray(r.poly) || r.poly.length < 3 || !r.poly.every(point$1)) {
+			error("room-points", `房间 ${r.id} 需要名称和至少三个有效顶点`, ref);
+			continue;
+		}
+		let invalid = false;
+		for (let i = 0; i < r.poly.length; i++) for (let j = i + 1; j < r.poly.length; j++) if (j !== i + 1 && !(i === 0 && j === r.poly.length - 1) && intersects$1(r.poly[i], r.poly[(i + 1) % r.poly.length], r.poly[j], r.poly[(j + 1) % r.poly.length])) invalid = true;
+		if (invalid || invalidPolygon(r.poly)) error("room-self-intersection", `房间 ${r.id} 多边形自交`, ref);
+		if (r.ceiling !== void 0 && (!finite$2(r.ceiling) || r.ceiling <= 0) || r.floorOffset !== void 0 && !finite$2(r.floorOffset)) error("height", `房间 ${r.id} 层高或地面抬高无效`, ref);
+	}
+	for (const b of plan.beams.filter(Boolean)) if (!point$1(b.a) || !point$1(b.b) || !finite$2(b.width) || b.width <= 0 || !finite$2(b.bottom) || b.bottom < 0) error("beam", `梁 ${b.id} 的端点、宽度或梁底无效`, {
+		type: "beam",
+		id: b.id
+	});
+	for (const q of plan.questions.filter(Boolean)) if (!["original", "renovation"].includes(q.category) || q.certainty !== void 0 && ![
+		"seen",
+		"inferred",
+		"unknown"
+	].includes(q.certainty)) error("enum", `问题 ${q.id} 的分类或确定度不认识`);
+	const questionIds = plan.questions.some((q) => q?.reply?.changed?.length) ? questionElementIds(plan) : /* @__PURE__ */ new Set();
+	for (const q of plan.questions.filter(Boolean)) {
+		const status = questionStatus(q), warn = (message) => issues.push({
+			level: "warn",
+			code: "question-status",
+			message: `问题卡 ${q.id}：${message}`
+		});
+		if (status === "answered" && !q.answer?.trim()) warn("status 是 answered，但没有答复");
+		if (status === "answered" && q.reply) warn("status 是 answered，但还挂着 reply");
+		if (status === "resolved" && !q.reply) warn("status 是 resolved，但没有 reply");
+		if (q.reply?.outcome === "ask" && status !== "open") warn("reply.outcome 是 ask，但 status 不是 open");
+		for (const id of q.reply?.changed ?? []) if (!questionIds.has(id)) warn(`reply.changed 里的构件 ${id} 在方案里找不到`);
+	}
+	for (const c of plan.changes.filter(Boolean)) {
+		if (![
+			"add",
+			"remove",
+			"update"
+		].includes(c.op) || ![
+			"wall",
+			"opening",
+			"beam",
+			"room",
+			"column",
+			"shaft",
+			"stair",
+			"void"
+		].includes(c.type) || !["user", "agent"].includes(c.by) || !["pending", "confirmed"].includes(c.status)) error("enum", `改造 ${c.id} 的操作、类型、作者或状态不认识`);
+		if (c.op !== "add" && !c.target || c.op !== "remove" && (!c.data || typeof c.data !== "object")) error("change-params", `改造 ${c.id} 缺少目标或参数`);
+	}
+	if (plan.levelUnderlays && (typeof plan.levelUnderlays !== "object" || Array.isArray(plan.levelUnderlays))) error("underlay", "levelUnderlays 必须是按楼层 id 索引的对象");
+	for (const id of Object.keys(plan.levelUnderlays ?? {})) if (!levelIds.has(id)) error("level-reference", `底图楼层 ${id} 不存在`);
+	for (const u of [plan.underlay, ...Object.values(plan.levelUnderlays ?? {})].filter(Boolean)) {
+		if (!u || typeof u !== "object") {
+			error("underlay", "底图必须是对象");
+			continue;
+		}
+		const src = typeof u.src === "string" ? u.src.trim() : "";
+		if (/^(?:[a-z][a-z\d+.-]*:|[/\\]{2})/i.test(src) && !/^data:image\/(?:(?:png|jpe?g|webp|gif|bmp|avif);base64|svg\+xml(?:;charset=utf-8)?(?:;base64)?),.+$/i.test(src)) error("underlay-remote", "底图必须为本地相对路径或内嵌图片（含 SVG）data URL，禁止远程地址和外部协议");
+		if (!src || !finite$2(u.mmPerPx) || u.mmPerPx <= 0 || !point$1(u.origin) || !finite$2(u.opacity) || u.opacity < 0 || u.opacity > 100 || typeof u.visible !== "boolean" || u.mmPerPxY !== void 0 && (!finite$2(u.mmPerPxY) || u.mmPerPxY <= 0)) error("underlay", "底图路径、比例、原点或显示参数无效");
+	}
+	if (plan.decor !== void 0 && !issues.some((i) => i.level === "error")) for (const i of validatePlanDecor(plan)) issues.push({
+		level: i.level === "error" ? "error" : "warn",
+		code: "decor-" + i.code,
+		message: `${i.id}：${i.text}`
+	});
+	return issues;
+}
+// src/core/changes.ts
+var replayOrigins = /* @__PURE__ */ new WeakMap();
+var replayOrigin = (plan) => replayOrigins.get(plan);
+var collection = {
+	wall: "walls",
+	opening: "openings",
+	beam: "beams",
+	room: "rooms",
+	column: "columns",
+	shaft: "shafts",
+	stair: "stairs",
+	void: "voids"
+};
+/** 某类构件的数组；可选集合（柱、管道井、楼梯、挑空）缺省时返回空数组（不写回方案） */
+function elements(plan, type) {
+	return plan[collection[type]] ?? [];
+}
+/** 可写的数组：可选集合缺省时在 plan 上建一个空数组 */
+function mutableElements(plan, type) {
+	const key = collection[type];
+	return plan[key] ??= [];
+}
+var allIds = (plan) => new Set([
+	...plan.walls,
+	...plan.openings,
+	...plan.beams,
+	...plan.rooms,
+	...plan.changes,
+	...plan.questions,
+	...plan.levels ?? [],
+	...plan.columns ?? [],
+	...plan.shafts ?? [],
+	...plan.stairs ?? [],
+	...plan.voids ?? []
+].map((x) => x.id));
+var finite$1 = (v) => typeof v === "number" && Number.isFinite(v);
+var point = (v) => Array.isArray(v) && v.length === 2 && v.every(finite$1);
+function checkElement(plan, type, item) {
+	if (!item || typeof item.id !== "string" || !item.id) return "构件缺少有效 id";
+	if (item.level !== void 0 && !levelsOf(plan).some((l) => l.id === item.level)) return "楼层引用不存在";
+	if (type === "wall" || type === "beam") {
+		if (!point(item.a) || !point(item.b) || Math.hypot(item.b[0] - item.a[0], item.b[1] - item.a[1]) < 1e-7) return "端点缺失或长度为零";
+		if (!finite$1(type === "wall" ? item.thickness : item.width) || (type === "wall" ? item.thickness : item.width) <= 0) return "厚度或宽度必须为正数";
+		if (type === "wall" && ![
+			"exterior",
+			"bearing",
+			"partition",
+			"glass",
+			"half",
+			"half-glass"
+		].includes(item.kind)) return "墙类型不认识";
+		if (type === "wall" && (item.height !== void 0 && (!finite$1(item.height) || item.height <= 0) || item.bulge !== void 0 && !finite$1(item.bulge) || item.lowHeight !== void 0 && (!finite$1(item.lowHeight) || item.lowHeight < 0))) return "墙高或矢高无效";
+		if (type === "beam" && (!finite$1(item.bottom) || item.bottom < 0)) return "梁底高度无效";
+	}
+	if (type === "room") {
+		if (typeof item.name !== "string" || !Array.isArray(item.poly) || item.poly.length < 3 || !item.poly.every(point)) return "房间需要名称和至少三个有效顶点";
+		if (item.ceiling !== void 0 && (!finite$1(item.ceiling) || item.ceiling <= 0) || item.floorOffset !== void 0 && !finite$1(item.floorOffset)) return "房间高度无效";
+	}
+	if (type === "opening") {
+		const w = plan.walls.find((w) => w.id === item.wall);
+		if (!w) return `宿主墙 ${item.wall ?? ""} 不存在`;
+		if (![
+			"door",
+			"sliding",
+			"doorway",
+			"window",
+			"floor-window",
+			"bay-window",
+			"open-balcony"
+		].includes(item.kind)) return "洞口类型不认识";
+		if (![
+			item.offset,
+			item.width,
+			item.sill,
+			item.head
+		].every(finite$1) || item.width <= 0 || item.offset < 0 || item.offset + item.width > wallLength(w) + 1e-6) return "洞口尺寸缺失或超出墙长";
+		if (item.sill < 0 || item.head <= item.sill || item.head > effectiveWallHeight(plan, w) + 1e-7) return "洞底、洞顶与墙高不相容";
+		if (plan.openings.some((o) => o.id !== item.id && o.wall === item.wall && Math.min(o.offset + o.width, item.offset + item.width) - Math.max(o.offset, item.offset) > 1e-6)) return "同墙洞口重叠";
+		if (item.panes && (!Array.isArray(item.panes) || !item.panes.length || item.panes.some((p) => !finite$1(p.width) || p.width <= 0 || ![
+			"fixed",
+			"casement",
+			"sliding"
+		].includes(p.kind)))) return "窗分扇无效";
+		if (item.swing && (!["start", "end"].includes(item.swing.hinge) || ![1, -1].includes(item.swing.side))) return "门开向无效";
+	}
+	const poly = (v) => Array.isArray(v) && v.length >= 3 && v.every(point) && !invalidPolygon(v);
+	if (type === "column") {
+		if (!point(item.center) || !point(item.size) || item.size.some((v) => v <= 0)) return "柱的位置或尺寸无效";
+		if (!["rect", "round"].includes(item.shape) || !["bearing", "decorative"].includes(item.kind)) return "柱的形状或类型不认识";
+		if (item.shape === "round" && item.size[0] !== item.size[1]) return "圆柱的两个尺寸必须相等";
+		if (item.rotation !== void 0 && !finite$1(item.rotation)) return "柱的旋转角无效";
+	}
+	if (type === "shaft") {
+		if (!poly(item.poly)) return "管道井需要至少三个不自交的顶点";
+		if (![
+			"flue",
+			"pipe",
+			"vent",
+			"other"
+		].includes(item.kind)) return "管道井类型不认识";
+	}
+	if (type === "void") {
+		if (!levelsOf(plan).some((l) => l.id === item.level)) return "挑空必须指定有效楼层";
+		if (!poly(item.poly)) return "挑空需要至少三个不自交的顶点";
+	}
+	if (type === "stair") {
+		const levels = levelsOf(plan), from = levels.find((l) => l.id === item.level), to = levels.find((l) => l.id === item.to);
+		if (!from || !to || from.id === to.id) return "楼梯的起止楼层必须存在且不同";
+		if (to.elevation <= from.elevation) return "楼梯要通到更高的一层";
+		if (!poly(item.poly)) return "楼梯占地需要至少三个不自交的顶点";
+		if (!Array.isArray(item.path) || item.path.length < 2 || !item.path.every(point) || item.path.slice(1).some((p, i) => p[0] === item.path[i][0] && p[1] === item.path[i][1])) return "楼梯上行路径需要至少两个不重合的点";
+		if (!finite$1(item.width) || item.width <= 0 || item.steps !== void 0 && (!Number.isInteger(item.steps) || item.steps <= 0)) return "楼梯宽度或踏步数无效";
+		if (![
+			"straight",
+			"L",
+			"U",
+			"spiral"
+		].includes(item.kind)) return "楼梯类型不认识";
+	}
+}
+function applyChanges(base, changes) {
+	let plan = structuredClone(base);
+	const results = [], protectedIds = new Set(base.walls.filter((w) => PROTECTED_KINDS.includes(w.kind) || w.evidence?.certainty === "unknown").map((w) => w.id));
+	const isProtected = (w) => !!w && (protectedIds.has(w.id) || PROTECTED_KINDS.includes(w.kind));
+	const bearingColumns = new Set((base.columns ?? []).filter((c) => c.kind === "bearing").map((c) => c.id));
+	for (const change of changes) {
+		const r = {
+			id: change.id,
+			ok: false,
+			affected: [],
+			removed: []
+		}, next = structuredClone(plan);
+		try {
+			const blocked = change.op === "remove" ? shaftRemovalError(next, change.target) : void 0;
+			if (blocked) throw new Error(blocked);
+			if (!collection[change.type] || ![
+				"add",
+				"remove",
+				"update"
+			].includes(change.op)) throw new Error("改造操作或构件类型不认识");
+			if (!["user", "agent"].includes(change.by) || !["pending", "confirmed"].includes(change.status)) throw new Error("改造作者或状态无效");
+			const list = mutableElements(next, change.type), old = list.find((x) => x.id === change.target);
+			if (change.op !== "add" && !old) throw new Error(`目标 ${change.target ?? "（未指定）"} 不存在`);
+			if (change.op !== "remove" && (!change.data || typeof change.data !== "object" || Array.isArray(change.data))) throw new Error("缺少 data 参数");
+			if (change.op === "update" && change.data.id !== void 0 && change.data.id !== change.target) throw new Error("更新不能修改构件 id");
+			const item = change.op === "add" ? structuredClone(change.data) : change.op === "update" ? {
+				...old,
+				...structuredClone(change.data)
+			} : old;
+			let protectedWall;
+			if (change.type === "wall" && change.op !== "add") {
+				const before = old, after = item;
+				const moved = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
+				if (change.op === "remove" || moved(before.a, after.a) || moved(before.b, after.b) || (before.bulge ?? 0) !== (after.bulge ?? 0) || (before.level ?? levelsOf(next)[0].id) !== (after.level ?? levelsOf(next)[0].id) || after.thickness < before.thickness || effectiveWallHeight(next, after) < effectiveWallHeight(next, before) || (after.lowHeight ?? 1) < (before.lowHeight ?? 1) || after.kind !== before.kind) protectedWall = before;
+			}
+			if (change.type === "opening" && change.op !== "remove") {
+				const o = item, prev = old;
+				if (!prev || o.wall !== prev.wall || o.offset !== prev.offset || o.width > prev.width || o.sill < prev.sill || o.head > prev.head) protectedWall = next.walls.find((w) => w.id === o.wall);
+			}
+			const beforeColumn = old, afterColumn = item;
+			const protectedColumn = change.type === "column" && change.op !== "add" && (bearingColumns.has(old.id) || beforeColumn?.kind === "bearing") && (change.op === "remove" || JSON.stringify(beforeColumn.center) !== JSON.stringify(afterColumn.center) || afterColumn.size?.some((v, i) => v < beforeColumn.size[i]) || afterColumn.kind !== beforeColumn.kind || afterColumn.shape !== beforeColumn.shape || (afterColumn.rotation ?? 0) !== (beforeColumn.rotation ?? 0) || (afterColumn.level ?? levelsOf(next)[0].id) !== (beforeColumn.level ?? levelsOf(next)[0].id));
+			if ((isProtected(protectedWall) || protectedColumn) && !(change.confirm && typeof change.confirm.by === "string" && change.confirm.by.trim())) {
+				r.needsConfirm = true;
+				r.error = protectedColumn ? "削减、移动或拆除承重柱需要用户二次确认" : "削减、移动、改类型、拆除或开洞承重墙、外墙、承重情况不确定的墙需要用户二次确认";
+				results.push(r);
+				continue;
+			}
+			if (change.op === "add") {
+				const error = checkElement(next, change.type, item);
+				if (error) throw new Error(error);
+				if (allIds(next).has(item.id)) throw new Error(`id ${item.id} 已存在`);
+				list.push(item);
+				r.affected.push(item.id);
+			} else if (change.op === "update") {
+				const error = checkElement(next, change.type, item);
+				if (error) throw new Error(error);
+				list[list.indexOf(old)] = item;
+				r.affected.push(old.id);
+				if (change.type === "wall") {
+					const openings = next.openings.filter((o) => o.wall === old.id).sort((a, b) => a.offset - b.offset || a.id.localeCompare(b.id));
+					if (Object.hasOwn(change.data, "bulge")) {
+						const length = wallLength(item);
+						if (openings.length === 1 && openings[0].width > length) {
+							openings[0].width = length;
+							(r.warnings ??= []).push(`洞口 ${openings[0].id} 宽度超过新墙长，已缩至 ${length.toFixed(1)}mm`);
+						}
+						if (openings.reduce((sum, o) => sum + o.width, 0) > length + 1e-6) throw new Error("新墙长不足以容纳所有洞口，未修改墙和洞口");
+						let end = length;
+						for (const o of [...openings].reverse()) {
+							const offset = Math.max(0, Math.min(o.offset, end - o.width));
+							if (Math.abs(offset - o.offset) > 1e-7 || openings.length === 1 && o.width !== plan.openings.find((p) => p.id === o.id)?.width) {
+								if (offset !== o.offset) (r.warnings ??= []).push(`洞口 ${o.id} 超出新墙长或与夹回洞口相遇，offset 已从 ${o.offset.toFixed(1)} 夹至 ${offset.toFixed(1)}mm`);
+								o.offset = offset;
+								r.affected.push(o.id);
+							}
+							end = offset;
+						}
+					}
+					for (const o of openings) {
+						const err = checkElement(next, "opening", o);
+						if (err) throw new Error(`墙更新导致洞口 ${o.id} 无效：${err}`);
+					}
+				}
+			} else if (change.type === "wall") {
+				const wall = old, len = wallLength(wall), range = change.range ?? [0, len], [from, to] = range;
+				if (range.length !== 2 || !range.every(finite$1) || from < 0 || to > len + 1e-6 || to <= from) throw new Error("拆除区间必须在墙长范围内，且起点小于终点");
+				const intervals = [];
+				if (from > 1e-6) intervals.push([0, from]);
+				if (to < len - 1e-6) intervals.push([to, len]);
+				const segments = intervals.map(([a, b], i) => ({
+					...sliceWall(wall, a, b),
+					id: i ? `${wall.id}~${change.id}` : wall.id
+				}));
+				if (segments[1] && allIds(next).has(segments[1].id)) throw new Error(`分段 id ${segments[1].id} 已存在`);
+				next.walls.splice(next.walls.indexOf(wall), 1, ...segments);
+				next.openings = next.openings.filter((o) => {
+					if (o.wall !== wall.id) return true;
+					const i = intervals.findIndex(([a, b]) => o.offset >= a - 1e-6 && o.offset + o.width <= b + 1e-6);
+					if (i < 0) {
+						r.removed.push(o.id);
+						return false;
+					}
+					o.wall = segments[i].id;
+					o.offset -= intervals[i][0];
+					r.affected.push(o.id);
+					return true;
+				});
+				r.affected.push(...segments.map((s) => s.id));
+				if (!segments.length) r.removed.push(wall.id);
+				if (isProtected(wall)) segments.forEach((s) => protectedIds.add(s.id));
+			} else {
+				list.splice(list.indexOf(old), 1);
+				r.removed.push(old.id);
+			}
+			for (const w of next.walls) if (PROTECTED_KINDS.includes(w.kind)) protectedIds.add(w.id);
+			for (const c of next.columns ?? []) if (c.kind === "bearing") bearingColumns.add(c.id);
+			r.ok = true;
+			plan = next;
+		} catch (error) {
+			r.error = error instanceof Error ? error.message : String(error);
+			r.affected = [];
+			r.removed = [];
+			delete r.warnings;
+		}
+		results.push(r);
+	}
+	if (changes.length && changes.every((c) => base.changes.some((saved) => saved.id === c.id)) && results.some((r) => r.ok)) {
+		const frame = mirrorBounds(base);
+		if (frame) {
+			plan.legacy ??= {};
+			plan.legacy.__structureReplayFrame = frame;
+		}
+	}
+	replayOrigins.set(plan, {
+		base: replayOrigins.get(base)?.base ?? base,
+		protectedWalls: protectedIds,
+		bearingColumns
+	});
+	return {
+		plan,
+		results
+	};
+}
+/** Validate the final replay once; attach contributing change IDs to each diagnostic. */
+function validateReplay(replay, changes, base) {
+	const issues = validatePlan(replay.plan);
+	const introduced = /* @__PURE__ */ new Map();
+	const key = (issue) => JSON.stringify([
+		issue.code,
+		issue.ref,
+		issue.message
+	]);
+	if (base && issues.some((i) => i.level === "error")) {
+		let previous = new Set(validatePlan(base).filter((i) => i.level === "error").map(key));
+		for (let i = 0; i < changes.length; i++) {
+			const current = new Set(validatePlan(applyChanges(base, changes.slice(0, i + 1)).plan).filter((i) => i.level === "error").map(key));
+			for (const id of current) if (!previous.has(id)) introduced.set(id, changes[i].id);
+			for (const id of previous) if (!current.has(id)) introduced.delete(id);
+			previous = current;
+		}
+	}
+	return issues.map((issue) => {
+		const related = replay.results.filter((r) => r.ok && (!issue.ref || [...r.affected, ...r.removed].includes(issue.ref.id)));
+		const cause = introduced.get(key(issue));
+		const changeIds = cause ? [cause] : (related.length ? related : replay.results.filter((r) => r.ok)).map((r) => r.id);
+		return {
+			...issue,
+			changeIds,
+			message: `${issue.message}${changeIds.length ? `（改造 ${changeIds.join("、")}；${changes.filter((c) => changeIds.includes(c.id)).map((c) => `${c.type}:${c.target ?? c.data?.id ?? ""}`).join("、")}）` : ""}`
+		};
+	});
+}
+// src/core/decor/resolve.ts
+var decorItems = (d) => [
+	...d.surfaces,
+	...d.furniture,
+	...d.cabinets,
+	...d.panels,
+	...d.recesses,
+	...d.doors ?? []
+];
+function itemSpan(plan, item) {
+	if ("span" in item || "thickness" in item) return panelSpan(plan, item);
+	if ("place" in item) return "face" in item.place ? {
+		face: item.place.face,
+		s: [item.place.s, item.place.s + item.width],
+		z: item.z
+	} : void 0;
+	if ("host" in item) return "face" in item.host && item.rect.s ? {
+		face: item.host.face,
+		s: item.rect.s,
+		z: item.rect.z
+	} : void 0;
+	if ("target" in item && "face" in item.target) {
+		const a = faceAxis(plan, item.target.face);
+		return {
+			face: item.target.face,
+			s: item.target.s ?? [0, a.length],
+			z: item.target.z ?? [0, plan.ceiling]
+		};
+	}
+	if ("against" in item && item.against) {
+		const a = faceAxis(plan, item.against.face), values = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, a.wall.a), wallDir(a.wall)));
+		return {
+			face: item.against.face,
+			s: [Math.min(...values), Math.max(...values)],
+			z: [item.z ?? 0, (item.z ?? 0) + item.height]
+		};
+	}
+}
+/** Local horizontal u and outward depth to plan coordinates; recesses use the host's left origin. */
+function hostTransform(plan, decor, id) {
+	const panel = decor.panels.find((p) => p.id === id);
+	if (panel) return panelTransform(plan, panel);
+	const cabinet = decor.cabinets.find((c) => c.id === id);
+	if (cabinet) return cabinetTransform(plan, cabinet);
+	const recess = decor.recesses.find((r) => r.id === id);
+	if (!recess) return void 0;
+	if ("face" in recess.host && recess.rect.s) {
+		const a = faceAxis(plan, recess.host.face), start = Math.min(...recess.rect.s.map(a.toU));
+		return (u, d) => a.at(a.toS(start + u), d);
+	}
+	const parent = "panel" in recess.host ? panelTransform(plan, decor.panels.find((p) => p.id === recess.host.panel)) : "cabinet" in recess.host ? cabinetTransform(plan, decor.cabinets.find((c) => c.id === recess.host.cabinet)) : void 0;
+	return parent && ((u, d) => parent(u + (recess.rect.u?.[0] ?? 0), d));
+}
+function itemFootprint(plan, decor, item) {
+	if ("size" in item) return furniturePose({
+		...plan,
+		decor
+	}, item).footprint;
+	if ("place" in item) return cabinetFootprint(plan, item);
+	if ("thickness" in item) {
+		const g = panelSpan(plan, item), at = panelTransform(plan, item), width = g.s[1] - g.s[0];
+		return [
+			at(0, 0),
+			at(width, 0),
+			at(width, item.type === "slats" ? item.slats?.depth ?? item.thickness : item.thickness),
+			at(0, item.type === "slats" ? item.slats?.depth ?? item.thickness : item.thickness)
+		];
+	}
+	if ("host" in item) {
+		const at = hostTransform(plan, decor, item.id);
+		if (!at) return [];
+		const width = item.rect.u ? item.rect.u[1] - item.rect.u[0] : item.rect.s ? item.rect.s[1] - item.rect.s[0] : 0;
+		const host = "panel" in item.host ? decor.panels.find((p) => p.id === item.host.panel) : "cabinet" in item.host ? decor.cabinets.find((c) => c.id === item.host.cabinet) : void 0;
+		const thick = host ? "thickness" in host ? host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness : host.depth : 0, dep = item.depth === "through" ? thick : item.depth;
+		return [
+			at(0, thick),
+			at(width, thick),
+			at(width, thick - dep),
+			at(0, thick - dep)
+		];
+	}
+	if (!("target" in item)) return [];
+	if ("floor" in item.target || "ceiling" in item.target) return plan.rooms.find((r) => r.id === ("floor" in item.target ? item.target.floor : "ceiling" in item.target ? item.target.ceiling : ""))?.poly ?? [];
+	const a = faceAxis(plan, item.target.face), s = item.target.s ?? [0, a.length];
+	return [
+		a.at(s[0]),
+		a.at(s[1]),
+		a.at(s[1], 1),
+		a.at(s[0], 1)
+	];
+}
+function resolveDecor(plan, afterOrDecor) {
+	const after = afterOrDecor && "walls" in afterOrDecor ? afterOrDecor : plan, source = afterOrDecor && !("walls" in afterOrDecor) ? afterOrDecor : plan.decor;
+	if (!source) return {
+		placed: [],
+		items: [],
+		issues: []
+	};
+	const decor = structuredClone(source), items = decorItems(decor), issues = [], moved = /* @__PURE__ */ new Set(), missing = /* @__PURE__ */ new Set();
+	const problem = (id, code, text) => {
+		issues.push({
+			id,
+			code,
+			level: "error",
+			text,
+			fix: [
+				"move",
+				"clip",
+				"keep",
+				"delete"
+			]
+		});
+		missing.add(id);
+	};
+	const remap = (id, sp) => {
+		const saved = source.cache?.[id]?.anchor;
+		const original = plan.walls.find((w) => w.id === sp.face.wall) ?? plan.walls.find((w) => sp.face.wall.startsWith(w.id + "~")) ?? after.walls.find((w) => sp.face.wall.startsWith(w.id + "~"));
+		const before = saved?.wall === sp.face.wall && original ? {
+			...original,
+			id: saved.wall,
+			a: saved.a,
+			b: saved.b
+		} : original?.id === sp.face.wall ? original : void 0;
+		const current = after.walls.find((w) => w.id === sp.face.wall);
+		const root = sp.face.wall.split("~")[0];
+		const split = before && current && wallLength(current) > wallLength(before) + 1e-5 && (saved || plan.changes.some((c) => c.op === "remove" && c.type === "wall" && c.target === root && c.range)) || sp.face.wall.includes("~") || after.walls.some((w) => w.id.startsWith(`${sp.face.wall}~`)) || after.changes.some((c) => c.type === "wall" && c.op === "remove" && c.target === sp.face.wall && c.range);
+		if (!before || !split || before.bulge) {
+			if (!current) {
+				problem(id, "host-missing", "宿主墙拆了，没地方挂了");
+				return;
+			}
+			return sp;
+		}
+		const dir = wallDir(before), candidates = after.walls.filter((w) => (w.id === root || w.id.startsWith(`${root}~`)) && !w.bulge && levelOf(after, w).id === levelOf(plan, before).id);
+		const match = candidates.find((w) => {
+			const ss = ordered(dot$2(sub$1(w.a, before.a), dir), dot$2(sub$1(w.b, before.a), dir));
+			return sp.s[0] >= ss[0] - 1e-5 && sp.s[1] <= ss[1] + 1e-5;
+		});
+		if (!match) {
+			problem(id, candidates.length ? "host-cut" : "host-missing", candidates.length ? "构件跨过拆掉的墙段，需裁到剩下的墙上或挪位置" : "宿主墙拆了，没地方挂了");
+			return;
+		}
+		const shift = dot$2(sub$1(match.a, before.a), dir), reversed = dot$2(wallDir(match), dir) < 0;
+		const s = ordered((sp.s[0] - shift) * (reversed ? -1 : 1), (sp.s[1] - shift) * (reversed ? -1 : 1)), face = {
+			wall: match.id,
+			side: reversed ? -sp.face.side : sp.face.side
+		};
+		if (face.wall !== sp.face.wall || s.some((v, i) => Math.abs(v - sp.s[i]) > 1e-7)) moved.add(id);
+		return {
+			...sp,
+			face,
+			s
+		};
+	};
+	for (const item of items) {
+		if ("in" in item && item.in) continue;
+		let sp;
+		try {
+			sp = itemSpan(plan, item);
+		} catch {
+			try {
+				sp = itemSpan(after, item);
+			} catch {
+				problem(item.id, "host-missing", "装修宿主不存在");
+				continue;
+			}
+		}
+		if (!sp) continue;
+		const next = remap(item.id, sp);
+		if (!next) {
+			if ("against" in item) {
+				delete item.against;
+				missing.delete(item.id);
+				const warning = issues.find((i) => i.id === item.id && i.code === "host-missing");
+				if (warning && plan.walls.some((w) => w.id === sp.face.wall)) warning.level = "info";
+			}
+			continue;
+		}
+		if ("thickness" in item) {
+			if (item.type !== "arch") item.span = next;
+			else if (item.span) item.span.face = next.face;
+		} else if ("place" in item && "face" in item.place) {
+			item.place.face = next.face;
+			item.place.s = next.s[0];
+		} else if ("host" in item && "face" in item.host) {
+			item.host.face = next.face;
+			item.rect.s = next.s;
+		} else if ("target" in item && "face" in item.target) {
+			item.target.face = next.face;
+			if (item.target.s) item.target.s = next.s;
+		} else if ("at" in item && item.against) {
+			item.against.face = next.face;
+			const a = faceAxis(after, next.face), old = source.furniture.find((f) => f.id === item.id), theta = Math.atan2(a.normal[1], a.normal[0]) * 180 / Math.PI - 90;
+			if (after !== plan && JSON.stringify(plan.walls.find((w) => w.id === sp.face.wall)) !== JSON.stringify(a.wall)) {
+				item.rot = theta;
+				item.at = a.at((next.s[0] + next.s[1]) / 2, item.against.gap + item.size[1] / 2 - (item.embed ?? 0));
+			} else item.at = [...old.at];
+		}
+	}
+	for (const r of decor.recesses) if (!("face" in r.host)) {
+		const id = "panel" in r.host ? r.host.panel : r.host.cabinet;
+		if (missing.has(id)) problem(r.id, "host-missing", `宿主 ${id} 没地方挂了`);
+		else if (moved.has(id)) moved.add(r.id);
+	}
+	for (const f of decor.furniture) if (f.in) {
+		const parent = f.in.split(":cell:")[0];
+		if (moved.has(parent)) moved.add(f.id);
+		if (missing.has(parent) || furniturePose({
+			...after,
+			decor
+		}, f).missing) problem(f.id, "host-missing", "家具的宿主链不存在");
+	}
+	const resolvedPlan = {
+		...after,
+		decor
+	};
+	issues.push(...validateDecorRaw(resolvedPlan, decor, plan));
+	for (const i of issues) if (i.code === "host-cut" && after !== plan) {
+		const item = items.find((x) => x.id === i.id);
+		try {
+			const sp = item && itemSpan(plan, item), before = plan.walls.find((w) => w.id === sp?.face.wall), current = after.walls.find((w) => w.id === sp?.face.wall);
+			if (sp && before && current && faceRun(plan, sp.face).length === 1 && wallLength(current) < wallLength(before) && !after.changes.some((c) => c.type === "wall" && c.op === "remove" && c.target === before.id && c.range)) {
+				i.code = "out-of-face";
+				i.text = "墙变短了，构件保持原 s 后超出墙面";
+			}
+		} catch {}
+	}
+	for (const i of [...issues]) {
+		if ([
+			"host-missing",
+			"host-cut",
+			"out-of-face",
+			"arc-unsupported",
+			"room-missing"
+		].includes(i.code) && (i.level === "error" || i.code === "room-missing" || decor.doors?.some((d) => d.id === i.id))) missing.add(i.id);
+		if (i.code === "through-wall" && after !== plan) {
+			const sp = (() => {
+				try {
+					return itemSpan(after, items.find((x) => x.id === i.id));
+				} catch {
+					return;
+				}
+			})(), oldWall = plan.walls.find((w) => w.id === sp?.face.wall), newWall = after.walls.find((w) => w.id === sp?.face.wall);
+			if (oldWall && newWall && newWall.thickness < oldWall.thickness) issues.push({
+				...i,
+				code: "too-deep",
+				text: `墙变薄了。${i.text}`
+			});
+		}
+	}
+	for (const r of decor.recesses) if (!("face" in r.host)) {
+		const parent = "panel" in r.host ? r.host.panel : r.host.cabinet;
+		if (missing.has(parent) && !missing.has(r.id)) problem(r.id, "host-missing", `宿主 ${parent} 没地方挂了`);
+	}
+	for (const f of decor.furniture) if (f.in && missing.has(f.in.split(":cell:")[0]) && !missing.has(f.id)) problem(f.id, "host-missing", "家具的宿主链不存在");
+	const placed = items.map((item) => {
+		let footprint = [], face, level = levelOf(after, "level" in item ? item : {}).id;
+		try {
+			const sp = itemSpan(after, item);
+			if (sp) {
+				const wholeSurface = "target" in item && "face" in item.target && !item.target.s && !item.target.z;
+				const f = faceFrame(after, wholeSurface ? sp.face : sp);
+				face = {
+					a: f.a,
+					b: f.b,
+					side: sp.face.side
+				};
+				level = levelOf(after, f.wall).id;
+			}
+			if (!missing.has(item.id)) footprint = itemFootprint(resolvedPlan, decor, item);
+		} catch {
+			missing.add(item.id);
+		}
+		if (missing.has(item.id)) {
+			const c = decor.cache?.[item.id];
+			if (c) {
+				const [x0, y0, x1, y1] = c.box;
+				footprint = "size" in item && c.pose ? furniturePose(resolvedPlan, item).footprint : [
+					[x0, y0],
+					[x1, y0],
+					[x1, y1],
+					[x0, y1]
+				];
+				level = c.level ?? level;
+			} else try {
+				footprint = itemFootprint(plan, source, decorItems(source).find((x) => x.id === item.id));
+			} catch {}
+		}
+		const status = missing.has(item.id) ? "missing" : moved.has(item.id) ? "moved" : "placed";
+		return {
+			id: item.id,
+			status,
+			reasons: [...new Set(issues.filter((i) => i.id === item.id).map((i) => i.text))],
+			text: status === "missing" ? "没地方挂了" : status === "moved" ? "挪到剩下那段" : "挂得上",
+			footprint,
+			...face ? { face } : {},
+			level,
+			item
+		};
+	});
+	const byId = new Map(placed.map((p) => [p.id, p]));
+	for (const p of placed) if ("host" in p.item && !("face" in p.item.host)) {
+		const parent = byId.get("panel" in p.item.host ? p.item.host.panel : p.item.host.cabinet);
+		if (parent) p.level = parent.level;
+	}
+	for (const p of placed) if ("in" in p.item && p.item.in) {
+		const parent = byId.get(p.item.in.split(":cell:")[0]);
+		if (parent) p.level = parent.level;
+	}
+	return {
+		decor,
+		placed,
+		items: placed,
+		issues: issues.filter((i, n) => issues.findIndex((j) => j.id === i.id && j.code === i.code && (i.code !== "component-invalid" || j.text === i.text)) === n)
+	};
+}
+/** Resolve by the actual span/footprint, then host; never select an unrelated floor. */
+function decorRoom(plan, item, visited = /* @__PURE__ */ new Set()) {
+	if (visited.has(item.id)) return void 0;
+	visited.add(item.id);
+	if ("target" in item && "floor" in item.target) return item.target.floor;
+	if ("target" in item && "ceiling" in item.target) return item.target.ceiling;
+	if (plan.decor) {
+		const host = "in" in item ? item.in?.split(":cell:")[0] : "host" in item ? "panel" in item.host ? item.host.panel : "cabinet" in item.host ? item.host.cabinet : void 0 : void 0;
+		const parent = host && decorItems(plan.decor).find((i) => i.id === host);
+		if (parent) return decorRoom(plan, parent, visited);
+	}
+	try {
+		const span = itemSpan(plan, item);
+		if (span) {
+			const axis = faceAxis(plan, span.face), mid = (span.s[0] + span.s[1]) / 2;
+			const room = plan.rooms.find((r) => levelOf(plan, r).id === levelOf(plan, axis.wall).id && pointInPolygon(axis.at(mid, 1), r.poly));
+			if (room) return room.id;
+			const neighbors = roomsBesideWall(plan, axis.wall.id)[span.face.side === 1 ? "positive" : "negative"];
+			if (neighbors.length === 1) return neighbors[0].id;
+		}
+		if (plan.decor) {
+			const fp = itemFootprint(plan, plan.decor, item), box = bounds(fp), center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
+			const level = "size" in item ? furniturePose(plan, item).level : levelOf(plan, "level" in item ? { level: item.level } : {}).id;
+			return fp.length ? plan.rooms.find((r) => levelOf(plan, r).id === level && pointInPolygon(center, r.poly))?.id : void 0;
+		}
+	} catch {}
+}
+/** Persistable reattachment, including last valid ghost geometry. */
+function rehostDecor(before, after, decor) {
+	const resolved = resolveDecor({
+		...before,
+		decor
+	}, after), result = resolved.decor;
+	result.cache ??= {};
+	for (const p of resolved.placed) if (p.status !== "missing" && p.footprint.length) {
+		const span = itemSpan({
+			...after,
+			decor: result
+		}, p.item), wall = after.walls.find((w) => w.id === span?.face.wall);
+		const pose = "size" in p.item ? furniturePose({
+			...after,
+			decor: result
+		}, p.item) : void 0;
+		result.cache[p.id] = {
+			level: p.level,
+			box: bounds(p.footprint),
+			...p.face ? { face: [p.face.a, p.face.b] } : {},
+			...wall ? { anchor: {
+				wall: wall.id,
+				a: [...wall.a],
+				b: [...wall.b]
+			} } : {},
+			...pose ? { pose: {
+				at: pose.at,
+				rot: pose.rot,
+				z: pose.z
+			} } : {}
+		};
+	}
+	for (const p of resolved.placed) if (p.status === "missing" && !result.cache[p.id]) try {
+		const original = decorItems(decor).find((i) => i.id === p.id), footprint = itemFootprint({
+			...before,
+			decor
+		}, decor, original);
+		if (!footprint.length) continue;
+		const pose = "size" in original ? furniturePose({
+			...before,
+			decor
+		}, original) : void 0;
+		result.cache[p.id] = {
+			level: pose?.level ?? p.level,
+			box: bounds(footprint),
+			...pose && !pose.missing ? { pose: {
+				at: pose.at,
+				rot: pose.rot,
+				z: pose.z
+			} } : {}
+		};
+	} catch {}
+	return result;
+}
+function decorStatus(plan) {
+	return resolveDecor(plan, plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan);
+}
+var pendingCount = (decor) => decor ? decorItems(decor).filter((i) => i.status === "pending").length : 0;
+/** Reject one pending edit. Undefined means a newly proposed item should be deleted. No mutation. */
+function restoreDecorItem(item) {
+	if (item.status !== "pending") return structuredClone(item);
+	return item.prev ? structuredClone(item.prev) : void 0;
+}
+/** 挂在谁上面（in / 挖洞的宿主）；没有宿主返回 undefined */
+function decorHostOf(item) {
+	if ("in" in item && item.in) return item.in.replace(/:cell:\d+:\d+$/, "");
+	if ("host" in item) return "panel" in item.host ? item.host.panel : "cabinet" in item.host ? item.host.cabinet : void 0;
+}
+/** Confirmed rendering/takeoff view. Restore previous versions, then drop dependent children transitively. */
+function confirmedDecor(decor) {
+	if (!decor) return void 0;
+	const result = structuredClone(decor), removed = /* @__PURE__ */ new Set();
+	const groups = [
+		"furniture",
+		"cabinets",
+		"panels",
+		"recesses",
+		"surfaces",
+		"doors"
+	];
+	for (const key of groups) if (decor[key]) result[key] = (decor[key] ?? []).flatMap((item) => {
+		const next = restoreDecorItem(item);
+		if (!next) {
+			removed.add(item.id);
+			return [];
+		}
+		return [next];
+	});
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const key of groups) if (decor[key]) result[key] = (result[key] ?? []).filter((item) => {
+			const host = decorHostOf(item);
+			if (host && removed.has(host)) {
+				removed.add(item.id);
+				changed = true;
+				return false;
+			}
+			return true;
+		});
+	}
+	for (const id of removed) if (result.cache) delete result.cache[id];
+	return result;
+}
+// src/core/decor/furniture.ts
+var FURNITURE_LIBRARY = [
+	[
+		"sofa-3",
+		"三人沙发",
+		"客厅",
+		2400,
+		900,
+		.85
+	],
+	[
+		"sofa-2",
+		"双人沙发",
+		"客厅",
+		1800,
+		900,
+		.85
+	],
+	[
+		"armchair",
+		"单椅",
+		"客厅",
+		800,
+		800,
+		.85
+	],
+	[
+		"coffee-table",
+		"茶几",
+		"客厅",
+		1200,
+		600,
+		.4
+	],
+	[
+		"bed-1800",
+		"双人床",
+		"卧室",
+		1800,
+		2e3,
+		.5
+	],
+	[
+		"bed-1500",
+		"双人床",
+		"卧室",
+		1500,
+		2e3,
+		.5
+	],
+	[
+		"bed-1200",
+		"单人床",
+		"卧室",
+		1200,
+		2e3,
+		.5
+	],
+	[
+		"nightstand",
+		"床头柜",
+		"卧室",
+		500,
+		400,
+		.5
+	],
+	[
+		"dining-table",
+		"餐桌",
+		"餐厨",
+		1600,
+		800,
+		.75
+	],
+	[
+		"chair",
+		"餐椅",
+		"餐厨",
+		450,
+		500,
+		.85
+	],
+	[
+		"desk",
+		"书桌",
+		"书房",
+		1200,
+		600,
+		.75
+	],
+	[
+		"bookshelf",
+		"书架",
+		"书房",
+		800,
+		300,
+		2
+	],
+	[
+		"fridge",
+		"冰箱",
+		"家电",
+		900,
+		700,
+		1.9
+	],
+	[
+		"washer",
+		"洗衣机",
+		"家电",
+		600,
+		650,
+		.85
+	],
+	[
+		"dryer",
+		"烘干机",
+		"家电",
+		600,
+		650,
+		.85
+	],
+	[
+		"oven",
+		"烤箱",
+		"家电",
+		600,
+		550,
+		.6
+	],
+	[
+		"steamer",
+		"蒸箱",
+		"家电",
+		600,
+		550,
+		.45
+	],
+	[
+		"dishwasher",
+		"洗碗机",
+		"家电",
+		600,
+		600,
+		.8
+	],
+	[
+		"microwave",
+		"微波炉",
+		"家电",
+		500,
+		400,
+		.3
+	],
+	[
+		"tv",
+		"电视",
+		"家电",
+		1450,
+		80,
+		.83
+	],
+	[
+		"tv-stand",
+		"电视柜",
+		"客厅",
+		1800,
+		400,
+		.45
+	],
+	[
+		"desk-chair",
+		"书桌椅",
+		"书房",
+		520,
+		520,
+		.9
+	],
+	[
+		"shower",
+		"淋浴区",
+		"卫浴",
+		900,
+		900,
+		2
+	],
+	[
+		"cushion",
+		"飘窗垫",
+		"软装",
+		2e3,
+		520,
+		.12
+	],
+	[
+		"rug",
+		"地毯",
+		"软装",
+		2400,
+		1600,
+		.01
+	],
+	[
+		"toilet",
+		"坐便器",
+		"卫浴",
+		400,
+		700,
+		.75
+	],
+	[
+		"basin",
+		"洗手台",
+		"卫浴",
+		800,
+		500,
+		.85
+	],
+	[
+		"bathtub",
+		"浴缸",
+		"卫浴",
+		1700,
+		750,
+		.6
+	],
+	[
+		"wardrobe",
+		"衣柜",
+		"收纳",
+		1800,
+		600,
+		2.4
+	]
+].map(([type, name, category, w, d, height]) => ({
+	type: String(type),
+	name: String(name),
+	category: String(category),
+	size: [Number(w), Number(d)],
+	height: Number(height),
+	symbol: String(type)
+}));
+function furnitureFootprint(f, plan) {
+	if (plan) return furniturePose(plan, f).footprint;
+	if (!f.at) throw new Error("宿主家具占地需要传入 plan");
+	return footprint(f.at, f.rot ?? 0, f.size);
+}
+function footprint(at, rot, size) {
+	const a = rot * Math.PI / 180, co = Math.cos(a), si = Math.sin(a), [w, d] = size;
+	return [
+		[-w / 2, -d / 2],
+		[w / 2, -d / 2],
+		[w / 2, d / 2],
+		[-w / 2, d / 2]
+	].map(([x, y]) => add(at, [x * co - y * si, x * si + y * co]));
+}
+function furnitureLevel(plan, f) {
+	return levelOf(plan, { level: f.in ? furniturePose(plan, f).level : plan.walls.find((w) => w.id === f.against?.face.wall)?.level ?? f.level });
+}
+/** 贴地的扁平件（地毯、高不过 30 mm 的构件）：不算碰撞，平面上垫在别的家具下面 */
+var isFlatFurniture = (decor, f) => f.type === "rug" || (componentOf(decor, f.type)?.height ?? Infinity) <= 30;
+/** Ceiling category is always overhead; lights must meet the room top within 50 mm. Heights are floor-relative metres. */
+function isOverhead(plan, f) {
+	const category = componentOf(plan.decor, f.type)?.category;
+	if (category === "ceiling") return true;
+	if (category !== "lighting") return false;
+	const pose = furniturePose(plan, f);
+	if (pose.missing) return false;
+	const room = plan.rooms.find((r) => levelOf(plan, r).id === pose.level && pointInPolygon(pose.at, r.poly));
+	const walls = plan.walls.filter((w) => levelOf(plan, w).id === pose.level);
+	const against = walls.find((w) => w.id === f.against?.face.wall);
+	const top = room ? roomCeiling(plan, room) : against ? effectiveWallHeight(plan, against) : walls.length ? Math.max(...walls.map((w) => effectiveWallHeight(plan, w))) : levelCeiling(plan, pose.level);
+	return Math.abs(top - (pose.z + f.height)) <= .05 + 1e-7;
+}
+/** World XY in mm; z floor-relative metres; hosted rot is a local offset. */
+function furniturePose(plan, f) {
+	let center = f.at ?? [0, 0], rotation = f.rot ?? 0, height = f.z ?? 0, level = levelOf(plan, plan.walls.find((w) => w.id === f.against?.face.wall) ?? f).id, missing = false;
+	if (f.in) try {
+		const decor = plan.decor;
+		if (!decor) throw new Error("missing decor");
+		const cellRef = /^(.*):cell:(\d+):(\d+)$/.exec(f.in);
+		if (cellRef) {
+			const cab = decor.cabinets.find((c) => c.id === cellRef[1]);
+			if (!cab) throw new Error("missing cabinet");
+			const cell = layoutCabinet(cab).cells.find((c) => c.column === +cellRef[2] && c.row === +cellRef[3]);
+			if (!cell) throw new Error("missing cell");
+			const at = cabinetTransform(plan, cab), n = sub$1(at(0, 1), at(0, 0));
+			center = at((cell.u[0] + cell.u[1]) / 2, cab.depth - f.size[1] / 2);
+			rotation = Math.atan2(n[1], n[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
+			height = f.z ?? cell.z[0];
+			level = levelOf(plan, "face" in cab.place ? faceAxis(plan, cab.place.face).wall : cab).id;
+		} else {
+			const at = hostTransform(plan, decor, f.in);
+			if (!at) throw new Error("missing host");
+			const host = [
+				...decor.recesses,
+				...decor.panels,
+				...decor.cabinets
+			].find((h) => h.id === f.in);
+			let width, front, z, hostLevel;
+			if ("host" in host) {
+				width = host.rect.u ? host.rect.u[1] - host.rect.u[0] : host.rect.s[1] - host.rect.s[0];
+				z = host.rect.z;
+				const parent = "panel" in host.host ? decor.panels.find((p) => p.id === host.host.panel) : "cabinet" in host.host ? decor.cabinets.find((c) => c.id === host.host.cabinet) : void 0;
+				front = parent ? "thickness" in parent ? parent.type === "slats" ? parent.slats?.depth ?? parent.thickness : parent.thickness : parent.depth : 0;
+				hostLevel = "face" in host.host ? faceAxis(plan, host.host.face).wall.level : parent && "thickness" in parent ? faceAxis(plan, panelSpan(plan, parent).face).wall.level : parent && "place" in parent && "face" in parent.place ? faceAxis(plan, parent.place.face).wall.level : parent?.level;
+			} else if ("thickness" in host) {
+				const span = panelSpan(plan, host);
+				width = span.s[1] - span.s[0];
+				front = host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness;
+				z = span.z;
+				hostLevel = faceAxis(plan, span.face).wall.level;
+			} else {
+				width = host.width;
+				front = host.depth;
+				z = host.z;
+				hostLevel = "face" in host.place ? faceAxis(plan, host.place.face).wall.level : host.level;
+			}
+			center = at(width / 2, front - f.size[1] / 2);
+			const normal = sub$1(at(0, 1), at(0, 0));
+			rotation = Math.atan2(normal[1], normal[0]) * 180 / Math.PI - 90 + (f.rot ?? 0);
+			height = f.z ?? z[0];
+			level = levelOf(plan, { level: hostLevel }).id;
+		}
+	} catch {
+		missing = true;
+		const cache = plan.decor?.cache?.[f.id];
+		if (cache) {
+			center = cache.pose?.at ?? [(cache.box[0] + cache.box[2]) / 2, (cache.box[1] + cache.box[3]) / 2];
+			rotation = cache.pose?.rot ?? rotation;
+			height = cache.pose?.z ?? height;
+			level = cache.level ?? level;
+		}
+	}
+	return {
+		at: center,
+		center,
+		rot: rotation,
+		z: height,
+		level,
+		missing,
+		footprint: footprint(center, rotation, f.size)
+	};
+}
+// src/core/decor/legacy.ts
+var aliases = {
+	sofa: "sofa-3",
+	bed: "bed-1800",
+	table: "dining-table",
+	dining: "dining-table",
+	coffee: "coffee-table",
+	refrigerator: "fridge",
+	washing: "washer",
+	television: "tv",
+	cabinet: "wardrobe",
+	single: "armchair"
+};
+/** Returns converted values without touching either the archival legacy snapshot or plan. */
+function fromLegacyFurniture(plan) {
+	const legacy = plan.legacy ?? {}, layout = legacy.layout;
+	const raw = legacy.furniture ?? layout?.furniture, result = {
+		furniture: [],
+		materials: [],
+		presets: [],
+		warnings: []
+	};
+	const ids = new Set([
+		...plan.walls,
+		...plan.openings,
+		...plan.rooms,
+		...plan.beams,
+		...plan.questions,
+		...plan.changes,
+		...plan.levels ?? [],
+		...plan.columns ?? [],
+		...plan.shafts ?? [],
+		...plan.stairs ?? [],
+		...plan.voids ?? [],
+		...plan.decor?.furniture ?? [],
+		...plan.decor?.materials ?? [],
+		...plan.decor?.surfaces ?? [],
+		...plan.decor?.cabinets ?? [],
+		...plan.decor?.panels ?? [],
+		...plan.decor?.recesses ?? [],
+		...plan.decor?.presets ?? []
+	].map((x) => x.id));
+	const id = (base) => {
+		let next = base, n = 1;
+		while (ids.has(next)) next = `${base}-${n++}`;
+		ids.add(next);
+		return next;
+	};
+	if (Array.isArray(raw)) raw.forEach((f, i) => {
+		if (!f || ![
+			f.cx,
+			f.cy,
+			f.w,
+			f.d
+		].every(Number.isFinite) || f.w <= 0 || f.d <= 0 || f.rot !== void 0 && !Number.isFinite(f.rot)) {
+			result.warnings.push(`旧家具第 ${i + 1} 件尺寸无效，保留在 legacy`);
+			return;
+		}
+		const type = aliases[f.type] ?? f.type, entry = FURNITURE_LIBRARY.find((e) => e.type === type);
+		const item = {
+			id: id(`legacy-furniture-${i + 1}`),
+			type: entry?.type ?? `placeholder:${String(f.type ?? "unknown")}`,
+			at: [f.cx, f.cy],
+			size: [f.w, f.d],
+			rot: f.rot ?? 0,
+			height: entry?.height ?? 1,
+			by: "user",
+			status: "confirmed",
+			...typeof f.name === "string" ? { name: f.name } : {}
+		};
+		if (typeof f.color === "string" && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(f.color)) {
+			const material = {
+				id: id(`${item.id}-color`),
+				name: `${item.name ?? entry?.name ?? "旧家具"}颜色`,
+				category: "other",
+				color: f.color
+			};
+			result.materials.push(material);
+			item.materials = { body: material.id };
+		}
+		result.furniture.push(item);
+	});
+	const color = legacy.wallColor ?? layout?.wallColor;
+	if (typeof color === "string" && /^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(color)) {
+		const material = {
+			id: id("legacy-wall-color"),
+			name: "旧方案墙漆",
+			category: "paint",
+			color
+		};
+		result.materials.push(material);
+		const style = id("legacy-style");
+		result.presets.push({
+			id: style,
+			name: "旧方案配色",
+			roles: { "wall.main": material.id },
+			by: "user"
+		});
+		result.style = style;
+	}
+	return result;
 }
 // node_modules/ajv/dist/compile/codegen/code.js
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
@@ -10444,7 +12921,7 @@ var plan_schema_default = {
 		"changes"
 	],
 	additionalProperties: false,
-	$defs: /* @__PURE__ */ JSON.parse("{\"Vec2\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"Box\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":4,\"maxItems\":4},\"Certainty\":{\"type\":\"string\",\"enum\":[\"seen\",\"inferred\",\"unknown\"]},\"WallKind\":{\"type\":\"string\",\"enum\":[\"exterior\",\"bearing\",\"partition\",\"glass\",\"half\",\"half-glass\"]},\"OpeningKind\":{\"type\":\"string\",\"enum\":[\"door\",\"sliding\",\"doorway\",\"window\",\"floor-window\",\"bay-window\",\"open-balcony\"]},\"PaneKind\":{\"type\":\"string\",\"enum\":[\"fixed\",\"casement\",\"sliding\"]},\"Evidence\":{\"type\":\"object\",\"properties\":{\"certainty\":{\"$ref\":\"#/$defs/Certainty\"},\"basis\":{\"type\":\"string\"},\"pixelBox\":{\"$ref\":\"#/$defs/Box\"},\"confirmed\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\",\"minLength\":1},\"at\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"certainty\"],\"additionalProperties\":false},\"Wall\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/WallKind\"},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"lowHeight\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"bulge\":{\"type\":\"number\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"a\",\"b\",\"thickness\",\"kind\"],\"additionalProperties\":false},\"Opening\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"wall\":{\"type\":\"string\",\"minLength\":1},\"offset\":{\"type\":\"number\",\"minimum\":0},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/OpeningKind\"},\"sill\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"head\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"swing\":{\"type\":\"object\",\"properties\":{\"hinge\":{\"type\":\"string\",\"enum\":[\"start\",\"end\"]},\"side\":{\"enum\":[1,-1]}},\"required\":[\"hinge\",\"side\"],\"additionalProperties\":false},\"panes\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/PaneKind\"}},\"required\":[\"width\",\"kind\"],\"additionalProperties\":false},\"minItems\":1},\"entry\":{\"type\":\"boolean\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"wall\",\"offset\",\"width\",\"kind\",\"sill\",\"head\"],\"additionalProperties\":false},\"Beam\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"bottom\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"a\",\"b\",\"width\",\"bottom\"],\"additionalProperties\":false},\"Room\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"floorOffset\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"use\":{\"type\":\"string\"},\"counted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"name\",\"poly\"],\"additionalProperties\":false},\"Level\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"elevation\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"}},\"required\":[\"id\",\"name\",\"elevation\"],\"additionalProperties\":false},\"Column\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"center\":{\"$ref\":\"#/$defs/Vec2\"},\"shape\":{\"type\":\"string\",\"enum\":[\"rect\",\"round\"]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"exclusiveMinimum\":0},{\"type\":\"number\",\"exclusiveMinimum\":0}],\"minItems\":2,\"maxItems\":2},\"rotation\":{\"type\":\"number\"},\"kind\":{\"type\":\"string\",\"enum\":[\"bearing\",\"decorative\"]},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"center\",\"shape\",\"size\",\"kind\"],\"additionalProperties\":false},\"Shaft\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"kind\":{\"type\":\"string\",\"enum\":[\"flue\",\"pipe\",\"vent\",\"other\"]},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"poly\",\"kind\"],\"additionalProperties\":false},\"Stair\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"to\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"path\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":2},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"type\":\"string\",\"enum\":[\"straight\",\"L\",\"U\",\"spiral\"]},\"steps\":{\"type\":\"integer\",\"minimum\":1},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"level\",\"to\",\"poly\",\"path\",\"width\",\"kind\"],\"additionalProperties\":false},\"Void\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"level\",\"poly\"],\"additionalProperties\":false},\"Underlay\":{\"type\":\"object\",\"properties\":{\"src\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?:(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]{2}).+|data:image/(?:png|jpe?g|webp|gif|bmp|avif);base64,.+|data:image/svg\\\\+xml(?:;charset=utf-8)?(?:;base64)?,.+)$\"},\"mmPerPx\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"mmPerPxY\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"origin\":{\"$ref\":\"#/$defs/Vec2\"},\"rotation\":{\"type\":\"number\"},\"flipX\":{\"type\":\"boolean\"},\"flipY\":{\"type\":\"boolean\"},\"opacity\":{\"type\":\"number\",\"minimum\":0,\"maximum\":100},\"visible\":{\"type\":\"boolean\"},\"calibrations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"p1\":{\"$ref\":\"#/$defs/Vec2\"},\"p2\":{\"$ref\":\"#/$defs/Vec2\"},\"length\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"note\":{\"type\":\"string\"}},\"required\":[\"p1\",\"p2\",\"length\"],\"additionalProperties\":false}}},\"required\":[\"src\",\"mmPerPx\",\"origin\",\"opacity\",\"visible\"],\"additionalProperties\":false},\"QuestionStatus\":{\"type\":\"string\",\"enum\":[\"open\",\"answered\",\"resolved\"]},\"QuestionOutcome\":{\"type\":\"string\",\"enum\":[\"changed\",\"confirmed\",\"inferred\",\"noted\",\"ask\",\"withdrawn\"]},\"QuestionReply\":{\"type\":\"object\",\"properties\":{\"outcome\":{\"$ref\":\"#/$defs/QuestionOutcome\"},\"text\":{\"type\":\"string\"},\"changed\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1}},\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"outcome\",\"text\",\"by\",\"at\"],\"additionalProperties\":false},\"QuestionLogEntry\":{\"type\":\"object\",\"properties\":{\"role\":{\"type\":\"string\",\"enum\":[\"user\",\"agent\"]},\"text\":{\"type\":\"string\"},\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"},\"outcome\":{\"$ref\":\"#/$defs/QuestionOutcome\"},\"changed\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1}}},\"required\":[\"role\",\"text\"],\"additionalProperties\":false},\"Question\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"text\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"original\",\"renovation\"]},\"certainty\":{\"$ref\":\"#/$defs/Certainty\"},\"bbox\":{\"$ref\":\"#/$defs/Box\"},\"targets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"answer\":{\"type\":\"string\"},\"answeredBy\":{\"type\":\"string\"},\"answeredAt\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/QuestionStatus\"},\"reply\":{\"$ref\":\"#/$defs/QuestionReply\"},\"log\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/QuestionLogEntry\"}}},\"required\":[\"id\",\"text\",\"category\"],\"additionalProperties\":false},\"Change\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"op\":{\"type\":\"string\",\"enum\":[\"add\",\"remove\",\"update\"]},\"type\":{\"type\":\"string\",\"enum\":[\"wall\",\"opening\",\"beam\",\"room\",\"column\",\"shaft\",\"stair\",\"void\"]},\"target\":{\"type\":\"string\",\"minLength\":1},\"data\":{\"type\":\"object\"},\"range\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"minimum\":0},{\"type\":\"number\",\"minimum\":0}],\"minItems\":2,\"maxItems\":2},\"note\":{\"type\":\"string\"},\"group\":{\"type\":\"string\"},\"by\":{\"type\":\"string\",\"enum\":[\"user\",\"agent\"]},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"confirmed\"]},\"confirm\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\",\"minLength\":1},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"at\":{\"type\":\"string\"}},\"required\":[\"id\",\"op\",\"type\",\"by\",\"status\"],\"additionalProperties\":false,\"allOf\":[{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"}}},\"then\":{\"required\":[\"data\"]},\"else\":{\"required\":[\"target\"]}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"}}},\"then\":{\"required\":[\"data\"]}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"wall\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/WallKind\"},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"lowHeight\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"bulge\":{\"type\":\"number\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"opening\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"wall\":{\"type\":\"string\",\"minLength\":1},\"offset\":{\"type\":\"number\",\"minimum\":0},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/OpeningKind\"},\"sill\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"head\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"swing\":{\"type\":\"object\",\"properties\":{\"hinge\":{\"type\":\"string\",\"enum\":[\"start\",\"end\"]},\"side\":{\"enum\":[1,-1]}},\"required\":[\"hinge\",\"side\"],\"additionalProperties\":false},\"panes\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/PaneKind\"}},\"required\":[\"width\",\"kind\"],\"additionalProperties\":false},\"minItems\":1},\"entry\":{\"type\":\"boolean\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"beam\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"bottom\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"room\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"floorOffset\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"use\":{\"type\":\"string\"},\"counted\":{\"type\":\"boolean\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"column\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"center\":{\"$ref\":\"#/$defs/Vec2\"},\"shape\":{\"type\":\"string\",\"enum\":[\"rect\",\"round\"]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"exclusiveMinimum\":0},{\"type\":\"number\",\"exclusiveMinimum\":0}],\"minItems\":2,\"maxItems\":2},\"rotation\":{\"type\":\"number\"},\"kind\":{\"type\":\"string\",\"enum\":[\"bearing\",\"decorative\"]},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"shaft\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"kind\":{\"type\":\"string\",\"enum\":[\"flue\",\"pipe\",\"vent\",\"other\"]},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"stair\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"to\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"path\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":2},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"type\":\"string\",\"enum\":[\"straight\",\"L\",\"U\",\"spiral\"]},\"steps\":{\"type\":\"integer\",\"minimum\":1},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"void\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"wall\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Wall\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"opening\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Opening\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"beam\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Beam\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"room\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Room\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"column\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Column\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"shaft\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Shaft\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"stair\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Stair\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"void\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Void\"}}}}]},\"DecorLayer\":{\"type\":\"object\",\"properties\":{\"version\":{\"const\":1},\"style\":{\"type\":\"string\"},\"materials\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Material\"}},\"presets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/StylePreset\"}},\"surfaces\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Surface\"}},\"furniture\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Furniture\"}},\"cabinets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Cabinet\"}},\"panels\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Panel\"}},\"recesses\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Recess\"}},\"cache\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"box\":{\"$ref\":\"#/$defs/Box\"},\"anchor\":{\"type\":\"object\",\"properties\":{\"wall\":{\"type\":\"string\"},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"}},\"required\":[\"wall\",\"a\",\"b\"],\"additionalProperties\":false},\"pose\":{\"type\":\"object\",\"properties\":{\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"},\"z\":{\"type\":\"number\"}},\"required\":[\"at\",\"rot\",\"z\"],\"additionalProperties\":false},\"face\":{\"type\":\"array\",\"prefixItems\":[{\"$ref\":\"#/$defs/Vec2\"},{\"$ref\":\"#/$defs/Vec2\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"box\"],\"additionalProperties\":false}}},\"required\":[\"version\",\"style\",\"materials\",\"surfaces\",\"furniture\",\"cabinets\",\"panels\",\"recesses\"],\"additionalProperties\":false},\"DecorBase\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"FaceRef\":{\"type\":\"object\",\"properties\":{\"wall\":{\"type\":\"string\"},\"side\":{\"anyOf\":[{\"const\":1},{\"const\":-1}]}},\"required\":[\"wall\",\"side\"],\"additionalProperties\":false},\"FaceSpan\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2,\"description\":\"长度单位 mm（文件 v3）\"}},\"required\":[\"face\",\"s\",\"z\"],\"additionalProperties\":false},\"Recess\":{\"type\":\"object\",\"properties\":{\"kind\":{\"anyOf\":[{\"const\":\"niche\"},{\"const\":\"hole\"}]},\"host\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"}},\"required\":[\"face\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"panel\":{\"type\":\"string\"}},\"required\":[\"panel\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"cabinet\":{\"type\":\"string\"}},\"required\":[\"cabinet\"],\"additionalProperties\":false}]},\"rect\":{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"u\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"z\"],\"additionalProperties\":false},\"depth\":{\"anyOf\":[{\"type\":\"number\"},{\"const\":\"through\"}]},\"back\":{\"type\":\"string\"},\"shelves\":{\"type\":\"array\",\"items\":{\"type\":\"number\"}},\"trim\":{\"type\":\"string\"},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"kind\",\"host\",\"rect\",\"depth\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"Cabinet\":{\"type\":\"object\",\"properties\":{\"family\":{\"anyOf\":[{\"const\":\"tall\"},{\"const\":\"base\"},{\"const\":\"wall\"}]},\"place\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"number\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"s\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"}},\"required\":[\"at\",\"rot\"],\"additionalProperties\":false}]},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"depth\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2,\"description\":\"长度单位 mm（文件 v3）\"},\"plinth\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"top\":{\"type\":\"object\",\"properties\":{\"material\":{\"type\":\"string\"},\"thickness\":{\"type\":\"number\"},\"overhang\":{\"type\":\"number\"}},\"required\":[\"material\",\"thickness\"],\"additionalProperties\":false},\"columns\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CabinetColumn\"}},\"cuts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"u\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"depth\":{\"anyOf\":[{\"const\":\"through\"},{\"type\":\"number\"}]}},\"required\":[\"u\",\"z\",\"depth\"],\"additionalProperties\":false}},\"materials\":{\"type\":\"object\",\"properties\":{\"carcass\":{\"type\":\"string\"},\"front\":{\"type\":\"string\"}},\"required\":[\"carcass\",\"front\"],\"additionalProperties\":false},\"handle\":{\"anyOf\":[{\"const\":\"none\"},{\"const\":\"bar\"},{\"const\":\"knob\"},{\"const\":\"edge\"}]},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"family\",\"place\",\"width\",\"depth\",\"z\",\"columns\",\"materials\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"CabinetColumn\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"cells\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CabinetCell\"}}},\"required\":[\"cells\"],\"additionalProperties\":false},\"ApplianceType\":{\"anyOf\":[{\"const\":\"fridge\"},{\"const\":\"washer\"},{\"const\":\"dryer\"},{\"const\":\"oven\"},{\"const\":\"steamer\"},{\"const\":\"dishwasher\"},{\"const\":\"microwave\"},{\"const\":\"tv\"},{\"const\":\"other\"}]},\"CabinetCell\":{\"type\":\"object\",\"properties\":{\"h\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"type\":{\"anyOf\":[{\"const\":\"door\"},{\"const\":\"doors\"},{\"const\":\"drawers\"},{\"const\":\"flap\"},{\"const\":\"open\"},{\"const\":\"void\"},{\"const\":\"appliance\"}]},\"hinge\":{\"anyOf\":[{\"const\":\"left\"},{\"const\":\"right\"}]},\"count\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":1000},\"void\":{\"type\":\"object\",\"properties\":{\"depth\":{\"anyOf\":[{\"const\":\"through\"},{\"type\":\"number\"}]},\"top\":{\"type\":\"object\",\"properties\":{\"z\":{\"type\":\"number\"},\"overhang\":{\"type\":\"number\"},\"material\":{\"type\":\"string\"}},\"required\":[\"z\"],\"additionalProperties\":false}},\"required\":[\"depth\"],\"additionalProperties\":false},\"appliance\":{\"type\":\"object\",\"properties\":{\"type\":{\"$ref\":\"#/$defs/ApplianceType\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":3,\"maxItems\":3}},\"required\":[\"type\"],\"additionalProperties\":false},\"material\":{\"type\":\"string\"}},\"required\":[\"type\"],\"additionalProperties\":false},\"Panel\":{\"type\":\"object\",\"properties\":{\"type\":{\"anyOf\":[{\"const\":\"feature\"},{\"const\":\"wainscot\"},{\"const\":\"slats\"},{\"const\":\"skirting\"},{\"const\":\"arch\"}]},\"span\":{\"$ref\":\"#/$defs/FaceSpan\"},\"opening\":{\"type\":\"string\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"material\":{\"type\":\"string\"},\"grooves\":{\"type\":\"object\",\"properties\":{\"dir\":{\"anyOf\":[{\"const\":\"v\"},{\"const\":\"h\"}]},\"spacing\":{\"type\":\"number\"},\"width\":{\"type\":\"number\"}},\"required\":[\"dir\",\"spacing\"],\"additionalProperties\":false},\"frame\":{\"type\":\"object\",\"properties\":{\"style\":{\"anyOf\":[{\"const\":\"flat\"},{\"const\":\"raised\"}]},\"margin\":{\"type\":\"number\"}},\"required\":[\"style\",\"margin\"],\"additionalProperties\":false},\"slats\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\"},\"gap\":{\"type\":\"number\"},\"depth\":{\"type\":\"number\"}},\"required\":[\"width\",\"gap\",\"depth\"],\"additionalProperties\":false},\"arch\":{\"type\":\"object\",\"properties\":{\"radius\":{\"type\":\"number\"}},\"required\":[],\"additionalProperties\":false},\"avoid\":{\"anyOf\":[{\"const\":\"openings\"},{\"const\":\"none\"}]},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"type\",\"thickness\",\"material\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"Furniture\":{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"},\"in\":false},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\",\"at\",\"rot\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"in\":{\"type\":\"string\"},\"at\":false,\"rot\":{\"type\":\"number\"}},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\",\"in\"],\"additionalProperties\":false}]},\"FurnitureBase\":{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"MaterialCategory\":{\"anyOf\":[{\"const\":\"wood-floor\"},{\"const\":\"tile\"},{\"const\":\"stone\"},{\"const\":\"paint\"},{\"const\":\"texture-paint\"},{\"const\":\"wallpaper\"},{\"const\":\"veneer\"},{\"const\":\"microcement\"},{\"const\":\"laminate\"},{\"const\":\"fabric\"},{\"const\":\"leather\"},{\"const\":\"metal\"},{\"const\":\"glass\"},{\"const\":\"rattan\"},{\"const\":\"other\"}]},\"Material\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"category\":{\"$ref\":\"#/$defs/MaterialCategory\"},\"color\":{\"type\":\"string\",\"pattern\":\"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$\"},\"texture\":{\"type\":\"object\",\"properties\":{\"kind\":{\"anyOf\":[{\"const\":\"planks\"},{\"const\":\"tiles\"},{\"const\":\"herringbone\"},{\"const\":\"grain\"},{\"const\":\"speckle\"},{\"const\":\"veins\"},{\"const\":\"weave\"}]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"joint\":{\"type\":\"number\"}},\"required\":[\"kind\"],\"additionalProperties\":false},\"pbr\":{\"type\":\"object\",\"properties\":{\"roughness\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"metalness\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"sheen\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"maps\":{\"type\":\"object\",\"properties\":{\"base\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"},\"normal\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"},\"rough\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"}},\"required\":[],\"additionalProperties\":false}},\"required\":[],\"additionalProperties\":false},\"ref\":{\"type\":\"string\"}},\"required\":[\"id\",\"name\",\"category\",\"color\"],\"additionalProperties\":false},\"MaterialRole\":{\"anyOf\":[{\"const\":\"floor.main\"},{\"const\":\"floor.wet\"},{\"const\":\"floor.outdoor\"},{\"const\":\"threshold\"},{\"const\":\"wall.main\"},{\"const\":\"wall.wet\"},{\"const\":\"wall.accent\"},{\"const\":\"ceiling\"},{\"const\":\"skirting\"},{\"const\":\"wood.main\"},{\"const\":\"cabinet.front\"},{\"const\":\"cabinet.carcass\"},{\"const\":\"stone.top\"},{\"const\":\"metal\"},{\"const\":\"fabric.main\"},{\"const\":\"fabric.accent\"},{\"const\":\"rug\"}]},\"StylePreset\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"blurb\":{\"type\":\"string\"},\"roles\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}},\"rooms\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"match\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"floor\":{\"$ref\":\"#/$defs/MaterialRole\"},\"wall\":{\"$ref\":\"#/$defs/MaterialRole\"}},\"required\":[\"match\"],\"additionalProperties\":false}},\"trims\":{\"type\":\"object\",\"properties\":{\"skirting\":{\"type\":\"object\",\"properties\":{\"height\":{\"type\":\"number\"},\"role\":{\"$ref\":\"#/$defs/MaterialRole\"}},\"required\":[\"height\",\"role\"],\"additionalProperties\":false},\"threshold\":{\"type\":\"boolean\"}},\"required\":[],\"additionalProperties\":false},\"board\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"by\":{\"anyOf\":[{\"const\":\"builtin\"},{\"const\":\"user\"},{\"const\":\"agent\"}]}},\"required\":[\"id\",\"name\",\"roles\"],\"additionalProperties\":false},\"SurfaceTarget\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"floor\":{\"type\":\"string\"}},\"required\":[\"floor\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"ceiling\":{\"type\":\"string\"}},\"required\":[\"ceiling\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"face\"],\"additionalProperties\":false}]},\"Surface\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"target\":{\"$ref\":\"#/$defs/SurfaceTarget\"},\"material\":{\"type\":\"string\"},\"layout\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"anyOf\":[{\"const\":\"straight\"},{\"const\":\"staggered\"},{\"const\":\"herringbone\"},{\"const\":\"chevron\"},{\"const\":\"grid\"},{\"const\":\"diagonal\"}]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"origin\":{\"$ref\":\"#/$defs/Vec2\"},\"angle\":{\"type\":\"number\"},\"joint\":{\"type\":\"number\"}},\"required\":[\"pattern\"],\"additionalProperties\":false},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]}},\"required\":[\"id\",\"target\",\"material\",\"by\",\"status\"],\"additionalProperties\":false},\"Decor\":{\"$ref\":\"#/$defs/DecorLayer\"}}")
+	$defs: /* @__PURE__ */ JSON.parse("{\"Vec2\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"Box\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":4,\"maxItems\":4},\"Certainty\":{\"type\":\"string\",\"enum\":[\"seen\",\"inferred\",\"unknown\"]},\"WallKind\":{\"type\":\"string\",\"enum\":[\"exterior\",\"bearing\",\"partition\",\"glass\",\"half\",\"half-glass\"]},\"OpeningKind\":{\"type\":\"string\",\"enum\":[\"door\",\"sliding\",\"doorway\",\"window\",\"floor-window\",\"bay-window\",\"open-balcony\"]},\"PaneKind\":{\"type\":\"string\",\"enum\":[\"fixed\",\"casement\",\"sliding\"]},\"Evidence\":{\"type\":\"object\",\"properties\":{\"certainty\":{\"$ref\":\"#/$defs/Certainty\"},\"basis\":{\"type\":\"string\"},\"pixelBox\":{\"$ref\":\"#/$defs/Box\"},\"confirmed\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\",\"minLength\":1},\"at\":{\"type\":\"string\"},\"note\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"certainty\"],\"additionalProperties\":false},\"Wall\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/WallKind\"},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"lowHeight\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"bulge\":{\"type\":\"number\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"a\",\"b\",\"thickness\",\"kind\"],\"additionalProperties\":false},\"Opening\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"wall\":{\"type\":\"string\",\"minLength\":1},\"offset\":{\"type\":\"number\",\"minimum\":0},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/OpeningKind\"},\"sill\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"head\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"swing\":{\"type\":\"object\",\"properties\":{\"hinge\":{\"type\":\"string\",\"enum\":[\"start\",\"end\"]},\"side\":{\"enum\":[1,-1]}},\"required\":[\"hinge\",\"side\"],\"additionalProperties\":false},\"panes\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/PaneKind\"}},\"required\":[\"width\",\"kind\"],\"additionalProperties\":false},\"minItems\":1},\"entry\":{\"type\":\"boolean\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"wall\",\"offset\",\"width\",\"kind\",\"sill\",\"head\"],\"additionalProperties\":false},\"Beam\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"bottom\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"a\",\"b\",\"width\",\"bottom\"],\"additionalProperties\":false},\"Room\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"floorOffset\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"use\":{\"type\":\"string\"},\"counted\":{\"type\":\"boolean\"}},\"required\":[\"id\",\"name\",\"poly\"],\"additionalProperties\":false},\"Level\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"elevation\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"}},\"required\":[\"id\",\"name\",\"elevation\"],\"additionalProperties\":false},\"Column\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"center\":{\"$ref\":\"#/$defs/Vec2\"},\"shape\":{\"type\":\"string\",\"enum\":[\"rect\",\"round\"]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"exclusiveMinimum\":0},{\"type\":\"number\",\"exclusiveMinimum\":0}],\"minItems\":2,\"maxItems\":2},\"rotation\":{\"type\":\"number\"},\"kind\":{\"type\":\"string\",\"enum\":[\"bearing\",\"decorative\"]},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"center\",\"shape\",\"size\",\"kind\"],\"additionalProperties\":false},\"Shaft\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"kind\":{\"type\":\"string\",\"enum\":[\"flue\",\"pipe\",\"vent\",\"other\"]},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"poly\",\"kind\"],\"additionalProperties\":false},\"Stair\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"to\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"path\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":2},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"type\":\"string\",\"enum\":[\"straight\",\"L\",\"U\",\"spiral\"]},\"steps\":{\"type\":\"integer\",\"minimum\":1},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"level\",\"to\",\"poly\",\"path\",\"width\",\"kind\"],\"additionalProperties\":false},\"Void\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"name\":{\"type\":\"string\"}},\"required\":[\"id\",\"level\",\"poly\"],\"additionalProperties\":false},\"Underlay\":{\"type\":\"object\",\"properties\":{\"src\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?:(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]{2}).+|data:image/(?:png|jpe?g|webp|gif|bmp|avif);base64,.+|data:image/svg\\\\+xml(?:;charset=utf-8)?(?:;base64)?,.+)$\"},\"mmPerPx\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"mmPerPxY\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"origin\":{\"$ref\":\"#/$defs/Vec2\"},\"rotation\":{\"type\":\"number\"},\"flipX\":{\"type\":\"boolean\"},\"flipY\":{\"type\":\"boolean\"},\"opacity\":{\"type\":\"number\",\"minimum\":0,\"maximum\":100},\"visible\":{\"type\":\"boolean\"},\"calibrations\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"p1\":{\"$ref\":\"#/$defs/Vec2\"},\"p2\":{\"$ref\":\"#/$defs/Vec2\"},\"length\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"note\":{\"type\":\"string\"}},\"required\":[\"p1\",\"p2\",\"length\"],\"additionalProperties\":false}}},\"required\":[\"src\",\"mmPerPx\",\"origin\",\"opacity\",\"visible\"],\"additionalProperties\":false},\"QuestionStatus\":{\"type\":\"string\",\"enum\":[\"open\",\"answered\",\"resolved\"]},\"QuestionOutcome\":{\"type\":\"string\",\"enum\":[\"changed\",\"confirmed\",\"inferred\",\"noted\",\"ask\",\"withdrawn\"]},\"QuestionReply\":{\"type\":\"object\",\"properties\":{\"outcome\":{\"$ref\":\"#/$defs/QuestionOutcome\"},\"text\":{\"type\":\"string\"},\"changed\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1}},\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"outcome\",\"text\",\"by\",\"at\"],\"additionalProperties\":false},\"QuestionLogEntry\":{\"type\":\"object\",\"properties\":{\"role\":{\"type\":\"string\",\"enum\":[\"user\",\"agent\"]},\"text\":{\"type\":\"string\"},\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"},\"outcome\":{\"$ref\":\"#/$defs/QuestionOutcome\"},\"changed\":{\"type\":\"array\",\"items\":{\"type\":\"string\",\"minLength\":1}}},\"required\":[\"role\",\"text\"],\"additionalProperties\":false},\"Question\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"text\":{\"type\":\"string\"},\"category\":{\"type\":\"string\",\"enum\":[\"original\",\"renovation\"]},\"certainty\":{\"$ref\":\"#/$defs/Certainty\"},\"bbox\":{\"$ref\":\"#/$defs/Box\"},\"targets\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"options\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"answer\":{\"type\":\"string\"},\"answeredBy\":{\"type\":\"string\"},\"answeredAt\":{\"type\":\"string\"},\"status\":{\"$ref\":\"#/$defs/QuestionStatus\"},\"reply\":{\"$ref\":\"#/$defs/QuestionReply\"},\"log\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/QuestionLogEntry\"}}},\"required\":[\"id\",\"text\",\"category\"],\"additionalProperties\":false},\"Change\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"op\":{\"type\":\"string\",\"enum\":[\"add\",\"remove\",\"update\"]},\"type\":{\"type\":\"string\",\"enum\":[\"wall\",\"opening\",\"beam\",\"room\",\"column\",\"shaft\",\"stair\",\"void\"]},\"target\":{\"type\":\"string\",\"minLength\":1},\"data\":{\"type\":\"object\"},\"range\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"minimum\":0},{\"type\":\"number\",\"minimum\":0}],\"minItems\":2,\"maxItems\":2},\"note\":{\"type\":\"string\"},\"group\":{\"type\":\"string\"},\"by\":{\"type\":\"string\",\"enum\":[\"user\",\"agent\"]},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"confirmed\"]},\"confirm\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\",\"minLength\":1},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"at\":{\"type\":\"string\"}},\"required\":[\"id\",\"op\",\"type\",\"by\",\"status\"],\"additionalProperties\":false,\"allOf\":[{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"}}},\"then\":{\"required\":[\"data\"]},\"else\":{\"required\":[\"target\"]}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"}}},\"then\":{\"required\":[\"data\"]}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"wall\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/WallKind\"},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"lowHeight\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"bulge\":{\"type\":\"number\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"opening\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"wall\":{\"type\":\"string\",\"minLength\":1},\"offset\":{\"type\":\"number\",\"minimum\":0},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/OpeningKind\"},\"sill\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"head\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"swing\":{\"type\":\"object\",\"properties\":{\"hinge\":{\"type\":\"string\",\"enum\":[\"start\",\"end\"]},\"side\":{\"enum\":[1,-1]}},\"required\":[\"hinge\",\"side\"],\"additionalProperties\":false},\"panes\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"$ref\":\"#/$defs/PaneKind\"}},\"required\":[\"width\",\"kind\"],\"additionalProperties\":false},\"minItems\":1},\"entry\":{\"type\":\"boolean\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"beam\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"bottom\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm\"},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"room\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"ceiling\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm\"},\"floorOffset\":{\"type\":\"number\",\"description\":\"长度单位 mm\"},\"use\":{\"type\":\"string\"},\"counted\":{\"type\":\"boolean\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"column\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"center\":{\"$ref\":\"#/$defs/Vec2\"},\"shape\":{\"type\":\"string\",\"enum\":[\"rect\",\"round\"]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\",\"exclusiveMinimum\":0},{\"type\":\"number\",\"exclusiveMinimum\":0}],\"minItems\":2,\"maxItems\":2},\"rotation\":{\"type\":\"number\"},\"kind\":{\"type\":\"string\",\"enum\":[\"bearing\",\"decorative\"]},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"shaft\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"kind\":{\"type\":\"string\",\"enum\":[\"flue\",\"pipe\",\"vent\",\"other\"]},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"stair\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"evidence\":{\"$ref\":\"#/$defs/Evidence\"},\"level\":{\"type\":\"string\",\"minLength\":1},\"to\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"path\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":2},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0},\"kind\":{\"type\":\"string\",\"enum\":[\"straight\",\"L\",\"U\",\"spiral\"]},\"steps\":{\"type\":\"integer\",\"minimum\":1},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"update\"},\"type\":{\"const\":\"void\"}}},\"then\":{\"properties\":{\"data\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"level\":{\"type\":\"string\",\"minLength\":1},\"poly\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Vec2\"},\"minItems\":3},\"name\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"wall\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Wall\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"opening\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Opening\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"beam\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Beam\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"room\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Room\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"column\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Column\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"shaft\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Shaft\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"stair\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Stair\"}}}},{\"if\":{\"properties\":{\"op\":{\"const\":\"add\"},\"type\":{\"const\":\"void\"}}},\"then\":{\"properties\":{\"data\":{\"$ref\":\"#/$defs/Void\"}}}}]},\"DecorLayer\":{\"type\":\"object\",\"properties\":{\"version\":{\"const\":1},\"style\":{\"type\":\"string\"},\"materials\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Material\"}},\"presets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/StylePreset\"}},\"components\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CustomComponent\"}},\"surfaces\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Surface\"}},\"furniture\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Furniture\"}},\"doors\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/DoorFinish\"}},\"cabinets\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Cabinet\"}},\"panels\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Panel\"}},\"recesses\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/Recess\"}},\"cache\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\"},\"box\":{\"$ref\":\"#/$defs/Box\"},\"anchor\":{\"type\":\"object\",\"properties\":{\"wall\":{\"type\":\"string\"},\"a\":{\"$ref\":\"#/$defs/Vec2\"},\"b\":{\"$ref\":\"#/$defs/Vec2\"}},\"required\":[\"wall\",\"a\",\"b\"],\"additionalProperties\":false},\"pose\":{\"type\":\"object\",\"properties\":{\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"},\"z\":{\"type\":\"number\"}},\"required\":[\"at\",\"rot\",\"z\"],\"additionalProperties\":false},\"face\":{\"type\":\"array\",\"prefixItems\":[{\"$ref\":\"#/$defs/Vec2\"},{\"$ref\":\"#/$defs/Vec2\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"box\"],\"additionalProperties\":false}}},\"required\":[\"version\",\"style\",\"materials\",\"surfaces\",\"furniture\",\"cabinets\",\"panels\",\"recesses\"],\"additionalProperties\":false},\"DecorBase\":{\"type\":\"object\",\"properties\":{\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"FaceRef\":{\"type\":\"object\",\"properties\":{\"wall\":{\"type\":\"string\"},\"side\":{\"anyOf\":[{\"const\":1},{\"const\":-1}]}},\"required\":[\"wall\",\"side\"],\"additionalProperties\":false},\"FaceSpan\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2,\"description\":\"长度单位 mm（文件 v3）\"}},\"required\":[\"face\",\"s\",\"z\"],\"additionalProperties\":false},\"Recess\":{\"type\":\"object\",\"properties\":{\"kind\":{\"anyOf\":[{\"const\":\"niche\"},{\"const\":\"hole\"}]},\"host\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"}},\"required\":[\"face\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"panel\":{\"type\":\"string\"}},\"required\":[\"panel\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"cabinet\":{\"type\":\"string\"}},\"required\":[\"cabinet\"],\"additionalProperties\":false}]},\"rect\":{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"u\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"z\"],\"additionalProperties\":false},\"depth\":{\"anyOf\":[{\"type\":\"number\"},{\"const\":\"through\"}]},\"back\":{\"type\":\"string\"},\"shelves\":{\"type\":\"array\",\"items\":{\"type\":\"number\"}},\"trim\":{\"type\":\"string\"},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"kind\",\"host\",\"rect\",\"depth\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"Cabinet\":{\"type\":\"object\",\"properties\":{\"family\":{\"anyOf\":[{\"const\":\"tall\"},{\"const\":\"base\"},{\"const\":\"wall\"}]},\"place\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"number\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"s\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"}},\"required\":[\"at\",\"rot\"],\"additionalProperties\":false}]},\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"depth\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2,\"description\":\"长度单位 mm（文件 v3）\"},\"plinth\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"top\":{\"type\":\"object\",\"properties\":{\"material\":{\"type\":\"string\"},\"thickness\":{\"type\":\"number\"},\"overhang\":{\"type\":\"number\"}},\"required\":[\"material\",\"thickness\"],\"additionalProperties\":false},\"columns\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CabinetColumn\"}},\"cuts\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"u\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"depth\":{\"anyOf\":[{\"const\":\"through\"},{\"type\":\"number\"}]}},\"required\":[\"u\",\"z\",\"depth\"],\"additionalProperties\":false}},\"materials\":{\"type\":\"object\",\"properties\":{\"carcass\":{\"type\":\"string\"},\"front\":{\"type\":\"string\"}},\"required\":[\"carcass\",\"front\"],\"additionalProperties\":false},\"handle\":{\"anyOf\":[{\"const\":\"none\"},{\"const\":\"bar\"},{\"const\":\"knob\"},{\"const\":\"edge\"}]},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"family\",\"place\",\"width\",\"depth\",\"z\",\"columns\",\"materials\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"CabinetColumn\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"cells\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/CabinetCell\"}}},\"required\":[\"cells\"],\"additionalProperties\":false},\"ApplianceType\":{\"anyOf\":[{\"const\":\"fridge\"},{\"const\":\"washer\"},{\"const\":\"dryer\"},{\"const\":\"oven\"},{\"const\":\"steamer\"},{\"const\":\"dishwasher\"},{\"const\":\"microwave\"},{\"const\":\"tv\"},{\"const\":\"other\"}]},\"CabinetCell\":{\"type\":\"object\",\"properties\":{\"h\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"type\":{\"anyOf\":[{\"const\":\"door\"},{\"const\":\"doors\"},{\"const\":\"drawers\"},{\"const\":\"flap\"},{\"const\":\"open\"},{\"const\":\"void\"},{\"const\":\"appliance\"}]},\"hinge\":{\"anyOf\":[{\"const\":\"left\"},{\"const\":\"right\"}]},\"count\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":1000},\"void\":{\"type\":\"object\",\"properties\":{\"depth\":{\"anyOf\":[{\"const\":\"through\"},{\"type\":\"number\"}]},\"top\":{\"type\":\"object\",\"properties\":{\"z\":{\"type\":\"number\"},\"overhang\":{\"type\":\"number\"},\"material\":{\"type\":\"string\"}},\"required\":[\"z\"],\"additionalProperties\":false}},\"required\":[\"depth\"],\"additionalProperties\":false},\"appliance\":{\"type\":\"object\",\"properties\":{\"type\":{\"$ref\":\"#/$defs/ApplianceType\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":3,\"maxItems\":3}},\"required\":[\"type\"],\"additionalProperties\":false},\"material\":{\"type\":\"string\"}},\"required\":[\"type\"],\"additionalProperties\":false},\"Panel\":{\"type\":\"object\",\"properties\":{\"type\":{\"anyOf\":[{\"const\":\"feature\"},{\"const\":\"wainscot\"},{\"const\":\"slats\"},{\"const\":\"skirting\"},{\"const\":\"arch\"}]},\"span\":{\"$ref\":\"#/$defs/FaceSpan\"},\"opening\":{\"type\":\"string\"},\"thickness\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"material\":{\"type\":\"string\"},\"grooves\":{\"type\":\"object\",\"properties\":{\"dir\":{\"anyOf\":[{\"const\":\"v\"},{\"const\":\"h\"}]},\"spacing\":{\"type\":\"number\"},\"width\":{\"type\":\"number\"}},\"required\":[\"dir\",\"spacing\"],\"additionalProperties\":false},\"frame\":{\"type\":\"object\",\"properties\":{\"style\":{\"anyOf\":[{\"const\":\"flat\"},{\"const\":\"raised\"}]},\"margin\":{\"type\":\"number\"}},\"required\":[\"style\",\"margin\"],\"additionalProperties\":false},\"slats\":{\"type\":\"object\",\"properties\":{\"width\":{\"type\":\"number\"},\"gap\":{\"type\":\"number\"},\"depth\":{\"type\":\"number\"}},\"required\":[\"width\",\"gap\",\"depth\"],\"additionalProperties\":false},\"arch\":{\"type\":\"object\",\"properties\":{\"radius\":{\"type\":\"number\"}},\"required\":[],\"additionalProperties\":false},\"avoid\":{\"anyOf\":[{\"const\":\"openings\"},{\"const\":\"none\"}]},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"type\",\"thickness\",\"material\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"Furniture\":{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"flip\":{\"type\":\"boolean\"},\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"at\":{\"$ref\":\"#/$defs/Vec2\"},\"rot\":{\"type\":\"number\"},\"in\":false},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\",\"at\",\"rot\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"flip\":{\"type\":\"boolean\"},\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false},\"in\":{\"type\":\"string\"},\"at\":false,\"rot\":{\"type\":\"number\"}},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\",\"in\"],\"additionalProperties\":false}]},\"FurnitureBase\":{\"type\":\"object\",\"properties\":{\"flip\":{\"type\":\"boolean\"},\"type\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\",\"exclusiveMinimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"z\":{\"type\":\"number\",\"description\":\"长度单位 mm（文件 v3）\"},\"against\":{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"gap\":{\"type\":\"number\"}},\"required\":[\"face\",\"gap\"],\"additionalProperties\":false},\"embed\":{\"type\":\"number\",\"minimum\":0,\"description\":\"长度单位 mm（文件 v3）\"},\"materials\":{\"type\":\"object\",\"properties\":{\"body\":{\"type\":\"string\"},\"fabric\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"type\",\"size\",\"height\",\"id\",\"by\",\"status\"],\"additionalProperties\":false},\"MaterialCategory\":{\"anyOf\":[{\"const\":\"wood-floor\"},{\"const\":\"tile\"},{\"const\":\"stone\"},{\"const\":\"paint\"},{\"const\":\"texture-paint\"},{\"const\":\"wallpaper\"},{\"const\":\"veneer\"},{\"const\":\"microcement\"},{\"const\":\"laminate\"},{\"const\":\"fabric\"},{\"const\":\"leather\"},{\"const\":\"metal\"},{\"const\":\"glass\"},{\"const\":\"rattan\"},{\"const\":\"other\"}]},\"Material\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"category\":{\"$ref\":\"#/$defs/MaterialCategory\"},\"color\":{\"type\":\"string\",\"pattern\":\"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$\"},\"texture\":{\"type\":\"object\",\"properties\":{\"kind\":{\"anyOf\":[{\"const\":\"planks\"},{\"const\":\"tiles\"},{\"const\":\"herringbone\"},{\"const\":\"grain\"},{\"const\":\"speckle\"},{\"const\":\"veins\"},{\"const\":\"weave\"}]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"joint\":{\"type\":\"number\"}},\"required\":[\"kind\"],\"additionalProperties\":false},\"pbr\":{\"type\":\"object\",\"properties\":{\"roughness\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"metalness\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"sheen\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"maps\":{\"type\":\"object\",\"properties\":{\"base\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"},\"normal\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"},\"rough\":{\"type\":\"string\",\"minLength\":1,\"pattern\":\"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"}},\"required\":[],\"additionalProperties\":false}},\"required\":[],\"additionalProperties\":false},\"ref\":{\"type\":\"string\"}},\"required\":[\"id\",\"name\",\"category\",\"color\"],\"additionalProperties\":false},\"MaterialRole\":{\"anyOf\":[{\"const\":\"floor.main\"},{\"const\":\"floor.wet\"},{\"const\":\"floor.outdoor\"},{\"const\":\"threshold\"},{\"const\":\"wall.main\"},{\"const\":\"wall.wet\"},{\"const\":\"wall.accent\"},{\"const\":\"ceiling\"},{\"const\":\"skirting\"},{\"const\":\"wood.main\"},{\"const\":\"cabinet.front\"},{\"const\":\"cabinet.carcass\"},{\"const\":\"stone.top\"},{\"const\":\"metal\"},{\"const\":\"fabric.main\"},{\"const\":\"fabric.accent\"},{\"const\":\"rug\"}]},\"StylePreset\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"blurb\":{\"type\":\"string\"},\"roles\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"}},\"rooms\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"match\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"floor\":{\"$ref\":\"#/$defs/MaterialRole\"},\"wall\":{\"$ref\":\"#/$defs/MaterialRole\"}},\"required\":[\"match\"],\"additionalProperties\":false}},\"trims\":{\"type\":\"object\",\"properties\":{\"skirting\":{\"type\":\"object\",\"properties\":{\"height\":{\"type\":\"number\"},\"role\":{\"$ref\":\"#/$defs/MaterialRole\"}},\"required\":[\"height\",\"role\"],\"additionalProperties\":false},\"threshold\":{\"type\":\"boolean\"}},\"required\":[],\"additionalProperties\":false},\"board\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"by\":{\"anyOf\":[{\"const\":\"builtin\"},{\"const\":\"user\"},{\"const\":\"agent\"}]}},\"required\":[\"id\",\"name\",\"roles\"],\"additionalProperties\":false},\"SurfaceTarget\":{\"anyOf\":[{\"type\":\"object\",\"properties\":{\"floor\":{\"type\":\"string\"}},\"required\":[\"floor\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"ceiling\":{\"type\":\"string\"}},\"required\":[\"ceiling\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"face\":{\"$ref\":\"#/$defs/FaceRef\"},\"s\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"face\"],\"additionalProperties\":false}]},\"Surface\":{\"type\":\"object\",\"properties\":{\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"target\":{\"$ref\":\"#/$defs/SurfaceTarget\"},\"material\":{\"type\":\"string\"},\"layout\":{\"type\":\"object\",\"properties\":{\"pattern\":{\"anyOf\":[{\"const\":\"straight\"},{\"const\":\"staggered\"},{\"const\":\"herringbone\"},{\"const\":\"chevron\"},{\"const\":\"grid\"},{\"const\":\"diagonal\"}]},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"origin\":{\"$ref\":\"#/$defs/Vec2\"},\"angle\":{\"type\":\"number\"},\"joint\":{\"type\":\"number\"}},\"required\":[\"pattern\"],\"additionalProperties\":false},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]}},\"required\":[\"id\",\"target\",\"material\",\"by\",\"status\"],\"additionalProperties\":false},\"Decor\":{\"$ref\":\"#/$defs/DecorLayer\"},\"ComponentCategory\":{\"anyOf\":[{\"const\":\"furniture\"},{\"const\":\"appliance\"},{\"const\":\"sanitary\"},{\"const\":\"lighting\"},{\"const\":\"ceiling\"},{\"const\":\"plant\"},{\"const\":\"soft\"},{\"const\":\"storage\"},{\"const\":\"other\"}]},\"ComponentPath\":{\"type\":\"object\",\"properties\":{\"d\":{\"type\":\"string\"},\"style\":{\"anyOf\":[{\"const\":\"outline\"},{\"const\":\"detail\"},{\"const\":\"dashed\"}]},\"fill\":{\"type\":\"string\"},\"stroke\":{\"type\":\"string\"}},\"required\":[\"d\"],\"additionalProperties\":false},\"ComponentPartBase\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"ComponentPart\":{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"kind\":{\"const\":\"extrude\"},\"outline\":{\"type\":\"string\"},\"z\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"outline\",\"z\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"kind\":{\"const\":\"side\"},\"along\":{\"anyOf\":[{\"const\":\"width\"},{\"const\":\"depth\"}]},\"profile\":{\"type\":\"string\"},\"span\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2}},\"required\":[\"kind\",\"along\",\"profile\",\"span\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"kind\":{\"const\":\"revolve\"},\"profile\":{\"type\":\"string\"},\"center\":{\"$ref\":\"#/$defs/Vec2\"}},\"required\":[\"kind\",\"profile\"],\"additionalProperties\":false}]},\"CustomComponent\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"category\":{\"$ref\":\"#/$defs/ComponentCategory\"},\"label\":{\"type\":\"string\"},\"basis\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"size\":{\"type\":\"array\",\"prefixItems\":[{\"type\":\"number\"},{\"type\":\"number\"}],\"minItems\":2,\"maxItems\":2},\"height\":{\"type\":\"number\"},\"plan\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ComponentPath\"}},\"front\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ComponentPath\"}},\"parts\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ComponentPart\"}},\"seg\":{\"type\":\"string\"}},\"required\":[\"id\",\"name\",\"category\",\"size\",\"height\",\"parts\"],\"additionalProperties\":false},\"DoorFinish\":{\"type\":\"object\",\"properties\":{\"opening\":{\"type\":\"string\"},\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"},\"frame\":{\"type\":\"object\",\"properties\":{\"color\":{\"type\":\"string\"},\"material\":{\"type\":\"string\"}},\"required\":[],\"additionalProperties\":false},\"front\":{\"type\":\"array\",\"items\":{\"$ref\":\"#/$defs/ComponentPath\"}},\"flip\":{\"type\":\"boolean\"},\"prev\":{\"type\":\"object\",\"additionalProperties\":{}},\"id\":{\"type\":\"string\",\"minLength\":1},\"name\":{\"type\":\"string\"},\"level\":{\"type\":\"string\"},\"by\":{\"anyOf\":[{\"const\":\"user\"},{\"const\":\"agent\"}]},\"status\":{\"anyOf\":[{\"const\":\"pending\"},{\"const\":\"confirmed\"}]},\"note\":{\"type\":\"string\"},\"look\":{\"type\":\"string\"},\"ack\":{\"type\":\"object\",\"properties\":{\"by\":{\"type\":\"string\"},\"at\":{\"type\":\"string\"}},\"required\":[\"by\"],\"additionalProperties\":false}},\"required\":[\"opening\",\"id\",\"by\",\"status\"],\"additionalProperties\":false}}")
 };
 // src/core/schema.ts
 var check = new import__2020.default({
@@ -10950,7 +13427,7 @@ var SIMPLE_FORMAT = "floorplan-simple";
 var SIMPLE_BASIS = "简版格式自动生成";
 var EPS = 1e-5;
 var record = (v) => !!v && typeof v === "object" && !Array.isArray(v);
-var finite$3 = (v) => typeof v === "number" && Number.isFinite(v);
+var finite = (v) => typeof v === "number" && Number.isFinite(v);
 var evidence = () => ({
 	certainty: "inferred",
 	basis: SIMPLE_BASIS
@@ -11211,7 +13688,7 @@ function simpleToPlan(value) {
 			let objects = false;
 			for (const [i, rawPoint] of r.poly.entries()) {
 				const p = record(rawPoint) ? (objects = true, extra(rawPoint, ["x", "y"]), [rawPoint.x, rawPoint.y]) : rawPoint;
-				if (!Array.isArray(p) || p.length !== 2 || !p.every(finite$3)) {
+				if (!Array.isArray(p) || p.length !== 2 || !p.every(finite)) {
 					error(`${path}.poly[${i}]：坐标要写两个有限数`);
 					continue;
 				}
@@ -11238,7 +13715,7 @@ function simpleToPlan(value) {
 				];
 				notes.push(`${path}.rect 的对象已转成 [x, y, 宽, 深]`);
 			}
-			if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(finite$3)) {
+			if (!Array.isArray(rect) || rect.length !== 4 || !rect.every(finite)) {
 				error(`${path}.rect：要写 [左上角 x, 左上角 y, 宽, 深] 四个有限数`);
 				return;
 			}
@@ -11255,7 +13732,7 @@ function simpleToPlan(value) {
 				[x, y + h]
 			];
 		}
-		if (poly.length < 3 || poly.some((p) => !p.every(finite$3)) || invalidPolygon(poly)) {
+		if (poly.length < 3 || poly.some((p) => !p.every(finite)) || invalidPolygon(poly)) {
 			error(`${path}.${r.poly !== void 0 ? "poly" : "rect"}：多边形自交或退化，请按边界顺序写顶点`);
 			return;
 		}
@@ -11495,6 +13972,34 @@ function addGeometryQuestions(rooms, edges, question) {
 	}
 }
 // src/core/io.ts
+function newId(plan, prefix) {
+	const ids = new Set([
+		...plan.walls,
+		...plan.openings,
+		...plan.beams,
+		...plan.rooms,
+		...plan.questions,
+		...plan.changes,
+		...plan.levels ?? [],
+		...plan.columns ?? [],
+		...plan.shafts ?? [],
+		...plan.stairs ?? [],
+		...plan.voids ?? []
+	].flatMap((x) => [
+		x.id,
+		..."data" in x && x.data && typeof x.data.id === "string" ? [x.data.id] : [],
+		..."group" in x && x.group ? [x.group] : []
+	]));
+	if (plan.decor) for (const item of [
+		...decorItems(plan.decor),
+		...plan.decor.materials,
+		...plan.decor.presets ?? [],
+		...plan.decor.components ?? []
+	]) ids.add(item.id);
+	let i = 1;
+	while (ids.has(`${prefix}${i}`)) i++;
+	return `${prefix}${i}`;
+}
 function stable(value) {
 	if (Array.isArray(value)) return value.map(stable);
 	if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().filter((k) => value[k] !== void 0).map((k) => [k, stable(value[k])]));
@@ -11510,7 +14015,7 @@ function agentUnits(text) {
 	return text.replace(/([+−-]?\d+(?:\.\d+)?(?:\s*[–—~～至到-]\s*[+−-]?\d+(?:\.\d+)?)*)\s*(?:m(?![a-zA-Z²³^\d])|米(?![²³]|平方|立方))/g, (_, values) => values.replace(/[+−-]?\d+(?:\.\d+)?/g, (n) => String(lengthUnit(Number(n.replace("−", "-"))))) + " mm");
 }
 /** Persisted length paths whose in-memory representation is metres. Never recurse by bare key names. */
-var METRE_PATHS = [
+var CURRENT_METRE_PATHS = [
 	"ceiling",
 	"walls.*.height",
 	"walls.*.lowHeight",
@@ -11536,6 +14041,7 @@ var METRE_PATHS = [
 	"decor.presets.*.trims.skirting.height",
 	"decor.cache.*.pose.z"
 ];
+var METRE_PATHS = [...CURRENT_METRE_PATHS, ...CURRENT_METRE_PATHS.filter((p) => /^decor\.(furniture|cabinets|panels|recesses|surfaces)\.\*\./.test(p)).map((p) => p.replace(/^(decor\.[^.]+\.\*\.)/, "$1prev."))];
 var ELEMENT_METRES = {
 	wall: ["height", "lowHeight"],
 	opening: ["sill", "head"],
@@ -11600,7 +14106,7 @@ function shapeOf(value) {
 	if (problems.length) throw new Error(`方案格式不完整：${problems.join("；")}`);
 	return filled;
 }
-function parsePlanText(text) {
+function parsePlanText$1(text, options = {}) {
 	try {
 		const value = JSON.parse(text.replace(/^\uFEFF/, ""));
 		if (isSimplePlan(value)) {
@@ -11632,7 +14138,7 @@ function parsePlanText(text) {
 				}
 			}
 			if (value.legacy) delete value.legacy.__structureReplayFrame;
-			const schemaIssues = validatePlanFile(planFileValue(value));
+			const schemaIssues = validatePlanFile(planFileValue(value)).filter((i) => !(options.allowUnknownOutsideDecor && /additional properties/.test(i.message) && !/^格式错误 \/decor(?:\/|：)/.test(i.message)));
 			const unknown = schemaIssues.find((i) => /不允许的字段|additional propert/i.test(i.message));
 			if (unknown) {
 				const path = (/^格式错误 (.*?)：/.exec(unknown.message)?.[1] ?? "/").replace(/^\/\//, "/");
@@ -11702,1859 +14208,463 @@ function parsePlanText(text) {
 		};
 	}
 }
-// src/core/decor/surfaces.ts
-var NEUTRAL_MATERIAL = {
-	id: "__neutral__",
-	name: "白模中性色",
-	category: "other",
-	color: "#f3f2ef"
-};
-function styleOf(plan) {
-	return plan.decor?.presets?.find((p) => p.id === plan.decor.style) ?? STYLE_PRESETS.find((p) => p.id === plan.decor?.style);
-}
-function materialOf(plan, id) {
-	return plan.decor?.materials.find((m) => m.id === id) ?? BUILTIN_MATERIALS.find((m) => m.id === id) ?? NEUTRAL_MATERIAL;
-}
-function roomRole(plan, room, kind) {
-	const text = room ? `${room.name} ${room.use ?? ""}` : "", rule = styleOf(plan)?.rooms?.find((r) => r.match.some((m) => text.includes(m)) && r[kind]);
-	if (rule?.[kind]) return rule[kind];
-	return /卫|厨|阳台/.test(text) ? `${kind}.wet` : `${kind}.main`;
-}
-function sameTarget(a, b) {
-	return "floor" in a && "floor" in b ? a.floor === b.floor : "ceiling" in a && "ceiling" in b ? a.ceiling === b.ceiling : "face" in a && "face" in b ? a.face.wall === b.face.wall && a.face.side === b.face.side : false;
-}
-/** A partial overlay may continue onto other records in its connected face run. */
-function overlaysOnFace(plan, face) {
-	return (plan.decor?.surfaces ?? []).flatMap((surface) => {
-		const t = surface.target;
-		if (!("face" in t)) return [];
-		if (t.face.wall === face.wall && t.face.side === face.side) return [surface];
-		if (!t.s) return [];
-		try {
-			const part = faceRun(plan, t.face).find((p) => p.face.wall === face.wall && p.face.side === face.side);
-			if (!part) return [];
-			const s = ordered(...t.s.map((v) => part.reversed ? part.s[1] - v : v - part.s[0]));
-			return [{
-				...surface,
-				target: {
-					...t,
-					face,
-					s
-				}
-			}];
-		} catch {
-			return [];
-		}
+// src/core/opening-symbol.ts
+function openingPath(w, from, to, depth = 0) {
+	const arc = arcParams(w), n = arc ? Math.max(2, Math.ceil(Math.abs(to - from) / 150), Math.ceil(Math.abs(to - from) / wallLength(w) * Math.abs(arc.angle) / 5)) : 1;
+	return Array.from({ length: n + 1 }, (_, i) => {
+		const s = from + (to - from) * i / n, d = wallTangent(w, s);
+		return add(pointAt(w, s), mul([-d[1], d[0]], depth));
 	});
 }
-/** Point-wise finish query; omitted coordinates select only whole-face overrides. Last overlay wins. */
-function resolveFinish(plan, target, opts = {}) {
-	if (plan.decor && (opts.styleId !== void 0 || opts.keep === false)) plan = {
-		...plan,
-		decor: {
-			...plan.decor,
-			style: opts.styleId ?? plan.decor.style,
-			surfaces: opts.keep === false ? [] : plan.decor.surfaces
-		}
-	};
-	const override = [..."face" in target ? overlaysOnFace(plan, target.face) : plan.decor?.surfaces ?? []].reverse().find((s) => sameTarget(s.target, target) && (!("face" in s.target) || (!s.target.s || opts.s !== void 0 && opts.s >= s.target.s[0] && opts.s <= s.target.s[1]) && (!s.target.z || opts.z !== void 0 && opts.z >= s.target.z[0] && opts.z <= s.target.z[1])));
-	const room = opts.room ?? ("floor" in target ? plan.rooms.find((r) => r.id === target.floor) : "ceiling" in target ? plan.rooms.find((r) => r.id === target.ceiling) : faceRoom(plan, target.face));
-	const role = "ceiling" in target ? "ceiling" : "floor" in target && room?.floorOffset ? "stone.top" : roomRole(plan, room, "floor" in target ? "floor" : "wall");
-	const material = materialOf(plan, override?.material ?? opts.material ?? styleOf(plan)?.roles[role] ?? styleOf(plan)?.roles["floor" in target ? "floor.main" : "ceiling" in target ? "ceiling" : "wall.main"]);
-	return {
-		styleMaterial: materialOf(plan, styleOf(plan)?.roles[role]),
-		...override ? { surfaceItem: override } : {},
-		material,
-		materialId: material.id,
-		overridden: !!override,
-		...override ? {
-			surface: override.id,
-			by: override.by
-		} : {},
-		role
-	};
+function openingStrip(w, from, to, thickness) {
+	return [...openingPath(w, from, to, thickness / 2), ...openingPath(w, from, to, -thickness / 2).reverse()];
 }
-var polyArea = (polys) => polys.reduce((sum, rings) => sum + polygonArea(rings[0]) - rings.slice(1).reduce((s, r) => s + polygonArea(r), 0), 0);
-function previewPlan(plan, opts) {
-	return plan.decor && (opts.styleId !== void 0 || opts.keep === false) ? {
-		...plan,
-		decor: {
-			...plan.decor,
-			style: opts.styleId ?? plan.decor.style,
-			surfaces: opts.keep === false ? [] : plan.decor.surfaces
-		}
-	} : plan;
+function openingPanes(o) {
+	return o.kind === "door" ? o.panes?.length ? o.panes.map((p) => ({
+		width: p.width,
+		kind: "door"
+	})) : [{
+		width: 1,
+		kind: "door"
+	}] : o.kind === "doorway" || o.kind === "open-balcony" ? [] : o.panes?.length ? o.panes : o.kind === "sliding" ? [{
+		width: 1,
+		kind: "sliding"
+	}, {
+		width: 1,
+		kind: "sliding"
+	}] : [{
+		width: 1,
+		kind: "fixed"
+	}];
 }
-function resolveSurfaces(plan, opts = {}) {
-	plan = previewPlan(plan, opts);
-	const floors = [], ceilings = [], walls = [];
-	for (const room of plan.rooms) for (const kind of ["floor", "ceiling"]) {
-		const target = kind === "floor" ? { floor: room.id } : { ceiling: room.id }, finish = resolveFinish(plan, target, { room });
-		(kind === "floor" ? floors : ceilings).push({
-			kind,
-			target,
-			...finish,
-			room: room.id,
-			polygons: [[room.poly]],
-			area: polygonArea(room.poly) / 1e6
-		});
-	}
-	for (const w of plan.walls) for (const side of [1, -1]) {
-		const face = {
-			wall: w.id,
-			side
-		}, axis = faceAxis(plan, face), height = w.kind === "half" ? w.lowHeight ?? 1 : effectiveWallHeight(plan, w), adjacent = roomsBesideWall(plan, w.id)[side === 1 ? "positive" : "negative"];
-		const overrides = overlaysOnFace(plan, face);
-		const ss = [
-			0,
-			axis.length,
-			...overrides.flatMap((s) => "face" in s.target ? s.target.s ?? [] : []),
-			...adjacent.flatMap((r) => r.poly.map((p) => w.bulge ? projectToWall(w, p).s : dot$2(sub$1(p, w.a), wallDir(w))))
-		].filter((s) => s >= 0 && s <= axis.length);
-		const zs = [
-			0,
-			height,
-			...overrides.flatMap((s) => "face" in s.target ? s.target.z ?? [] : [])
-		].filter((z) => z >= 0 && z <= height);
-		const sx = [...new Set(ss)].sort((a, b) => a - b), zz = [...new Set(zs)].sort((a, b) => a - b);
-		const holes = plan.openings.filter((o) => o.wall === w.id).map((o) => [rectPoly({
-			u: [o.offset, o.offset + o.width],
-			z: [o.sill, o.head]
-		})]);
-		const intervals = faceIntervals(plan, face);
-		for (let i = 1; i < sx.length; i++) for (let j = 1; j < zz.length; j++) {
-			const s = [sx[i - 1], sx[i]], z = [zz[j - 1], zz[j]], mid = (s[0] + s[1]) / 2;
-			const room = adjacent.find((r) => pointInPolygon(axis.at(mid, 1), r.poly)), target = {
-				face,
-				s,
-				z
+function openingSymbol(plan, id, opts = {}) {
+	const o = plan.openings.find((o) => o.id === id), w = plan.walls.find((w) => w.id === o?.wall);
+	if (!o || !w) throw new Error(`洞口或宿主墙不存在：${id}`);
+	const end = o.offset + o.width, edges = [openingPath(w, o.offset, end, w.thickness / 2), openingPath(w, o.offset, end, -w.thickness / 2)];
+	const divider = (s) => {
+		const p = pointAt(w, s), d = wallTangent(w, s), n = [-d[1], d[0]];
+		return [add(p, mul(n, w.thickness / 2)), add(p, mul(n, -w.thickness / 2))];
+	};
+	const result = {
+		id,
+		wall: w.id,
+		curved: !!w.bulge,
+		path: openingPath(w, o.offset, end),
+		edges,
+		jambs: [divider(o.offset), divider(end)],
+		divisions: [],
+		leaves: []
+	};
+	const panes = openingPanes(o).filter((p) => p.width > 0), total = panes.reduce((s, p) => s + p.width, 0);
+	let from = o.offset;
+	panes.forEach((pane, index) => {
+		const to = index === panes.length - 1 ? end : from + o.width * pane.width / total;
+		let path = openingPath(w, from, to), footprint = openingStrip(w, from, to, pane.kind === "door" ? 40 : 30), hinge;
+		if (pane.kind === "door") {
+			const swing = o.swing ?? {
+				hinge: panes.length > 1 && index === panes.length - 1 ? "end" : "start",
+				side: 1
+			}, angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)) * Math.PI / 180 * swing.side * (swing.hinge === "start" ? 1 : -1);
+			hinge = pointAt(w, swing.hinge === "start" ? from : to);
+			const rotate = (p) => {
+				const x = p[0] - hinge[0], y = p[1] - hinge[1];
+				return [hinge[0] + x * Math.cos(angle) - y * Math.sin(angle), hinge[1] + x * Math.sin(angle) + y * Math.cos(angle)];
 			};
-			let polygons = intersection([[rectPoly({
-				u: s,
-				z
-			})]], intervals.map((u) => [rectPoly({
-				u,
-				z: [0, height]
-			})]));
-			polygons = difference(polygons, holes);
-			if (!polygons.length) continue;
-			walls.push({
-				kind: "wall",
-				target,
-				...resolveFinish(plan, { face }, {
-					s: mid,
-					z: (z[0] + z[1]) / 2,
-					room
-				}),
-				...room ? { room: room.id } : {},
-				polygons,
-				area: polyArea(polygons) * axis.scale / 1e3
-			});
+			path = path.map(rotate);
+			footprint = footprint.map(rotate);
 		}
-	}
-	return {
-		floors,
-		walls,
-		ceilings,
-		all: [
-			...floors,
-			...walls,
-			...ceilings
-		]
-	};
-}
-/** m²; disjoint overlays and opening unions are counted once. No purchasing/waste allowance. */
-function materialTakeoff(plan, opts = {}) {
-	plan = previewPlan(plan, opts);
-	const quantities = /* @__PURE__ */ new Map(), add = (material, kind, area) => {
-		const q = quantities.get(material.id) ?? {
-			material,
-			materialId: material.id,
-			area: 0,
-			floor: 0,
-			wall: 0,
-			ceiling: 0,
-			panel: 0,
-			cabinet: 0,
-			countertop: 0,
-			approximate: true,
-			where: [],
-			overridden: false,
-			count: 0
-		};
-		q[kind] += Math.max(0, area);
-		q.area += Math.max(0, area);
-		quantities.set(material.id, q);
-	};
-	const surfaces = resolveSurfaces(plan).all;
-	for (const s of surfaces) {
-		let polygons = s.polygons;
-		if ("face" in s.target) {
-			const f = s.target.face, axis = faceAxis(plan, f), covers = [];
-			for (const panel of plan.decor?.panels ?? []) try {
-				const g = panelGeometry(plan, panel), member = faceRun(plan, g.span.face).find((p) => p.face.wall === f.wall && p.face.side === f.side);
-				if (!member) continue;
-				const pa = faceAxis(plan, g.span.face), u0 = Math.min(...g.span.s.map(pa.toU));
-				const through = (plan.decor?.recesses ?? []).filter((r) => "panel" in r.host && r.host.panel === panel.id && r.depth === "through" && r.rect.u).map((r) => [rectPoly({
-					u: r.rect.u,
-					z: r.rect.z
-				})]);
-				const covering = difference(g.polygons, through);
-				covers.push(...covering.map((rings) => rings.map((r) => r.map(([u, z]) => {
-					const v = pa.toS(u0 + u);
-					return [member.reversed ? member.s[1] - v : v - member.s[0], z];
-				}))));
-			} catch {}
-			polygons = difference(polygons, covers);
-			for (const recess of [...plan.decor?.recesses ?? []].reverse()) if ("face" in recess.host && recess.back && recess.rect.s && typeof recess.depth === "number" && recess.depth < axis.wall.thickness) try {
-				const part = faceRun(plan, recess.host.face).find((p) => p.face.wall === f.wall && p.face.side === f.side);
-				if (!part) continue;
-				const patch = [[rectPoly({
-					u: ordered(...recess.rect.s.map((v) => part.reversed ? part.s[1] - v : v - part.s[0])),
-					z: recess.rect.z
-				})]], covered = intersection(polygons, patch);
-				add(materialOf(plan, recess.back), "wall", polyArea(covered) * axis.scale / 1e3);
-				polygons = difference(polygons, patch);
-			} catch {}
-			add(s.material, s.kind, polyArea(polygons) * axis.scale / 1e3);
-		} else add(s.material, s.kind, s.area);
-	}
-	for (const p of plan.decor?.panels ?? []) try {
-		const g = panelGeometry(plan, p);
-		add(materialOf(plan, p.material), "panel", polyArea(g.visiblePolygons) / 1e3);
-		for (const r of plan.decor?.recesses ?? []) if ("panel" in r.host && r.host.panel === p.id && r.depth !== "through" && r.rect.u) add(materialOf(plan, r.back ?? p.material), "panel", polyArea(intersection(g.polygons, [[rectPoly({
-			u: r.rect.u,
-			z: r.rect.z
-		})]])) / 1e3);
-	} catch {}
-	for (const cab of plan.decor?.cabinets ?? []) {
-		const layout = layoutCabinet(cab);
-		if (layout.issues.length) continue;
-		const full = [[rectPoly({
-			u: [0, cab.width],
-			z: cab.z
-		})]], holes = [...layout.cuts, ...(plan.decor?.recesses ?? []).filter((r) => "cabinet" in r.host && r.host.cabinet === cab.id && r.rect.u).map((r) => ({
-			u: r.rect.u,
-			z: r.rect.z,
-			depth: r.depth
-		}))];
-		const through = holes.filter((h) => h.depth === "through").map((h) => [rectPoly(h)]), allCuts = holes.map((h) => [rectPoly(h)]), fronts = [];
-		for (const part of layout.parts.filter((p) => p.kind === "front" || p.kind === "appliance")) {
-			const visible = difference([[rectPoly(part)]], allCuts);
-			fronts.push(...visible);
-			if (part.kind === "front") add(materialOf(plan, part.material ?? cab.materials.front), "cabinet", polyArea(visible) / 1e3);
-		}
-		let carcass = difference(difference(full, through), fronts);
-		for (const r of [...plan.decor?.recesses ?? []].reverse()) if ("cabinet" in r.host && r.host.cabinet === cab.id && r.depth !== "through" && r.back && r.rect.u) {
-			const patch = [[rectPoly({
-				u: r.rect.u,
-				z: r.rect.z
-			})]], covered = intersection(carcass, patch);
-			add(materialOf(plan, r.back), "cabinet", polyArea(covered) / 1e3);
-			carcass = difference(carcass, patch);
-		}
-		add(materialOf(plan, cab.materials.carcass), "cabinet", polyArea(carcass) / 1e3);
-		for (const top of layout.parts.filter((p) => p.kind === "top")) add(materialOf(plan, top.material), "countertop", (top.u[1] - top.u[0]) * (top.depth[1] - top.depth[0]) / 1e6);
-	}
-	for (const q of quantities.values()) {
-		const matching = surfaces.filter((s) => s.materialId === q.materialId);
-		const panels = (plan.decor?.panels ?? []).filter((p) => p.material === q.materialId);
-		const cabinets = (plan.decor?.cabinets ?? []).filter((c) => c.materials.front === q.materialId);
-		const roomName = (id) => id ? plan.rooms.find((r) => r.id === id)?.name ?? id : void 0;
-		const location = (item, seen = /* @__PURE__ */ new Set()) => {
-			if (seen.has(item.id)) return void 0;
-			seen.add(item.id);
-			try {
-				const span = itemSpan(plan, item);
-				if (span) return wallLocation(plan, span.face, decorRoom(plan, item), (span.s[0] + span.s[1]) / 2);
-			} catch {}
-			if ("host" in item && !("face" in item.host) && plan.decor) {
-				const id = "panel" in item.host ? item.host.panel : item.host.cabinet, parent = decorItems(plan.decor).find((i) => i.id === id);
-				if (parent) return location(parent, seen);
-			}
-			return roomName(decorRoom(plan, item));
-		};
-		const faceName = (face, room, s) => wallLocation(plan, face, room, s);
-		q.where = [.../* @__PURE__ */ new Set([
-			...matching.map((s) => "face" in s.target ? faceName(s.target.face, s.room, s.target.s ? (s.target.s[0] + s.target.s[1]) / 2 : void 0) : `${roomName(s.room) ?? s.room ?? "未命名房间"}${s.kind === "ceiling" ? "顶面" : "地面"}`),
-			...panels.map((p) => {
-				try {
-					const sp = panelSpan(plan, p);
-					return `${faceName(sp.face, decorRoom(plan, p), (sp.s[0] + sp.s[1]) / 2)}·${p.name ?? p.id}`;
-				} catch {
-					return `${p.id}（宿主缺失）`;
-				}
-			}),
-			...(plan.decor?.cabinets ?? []).filter((c) => [
-				c.materials.front,
-				c.materials.carcass,
-				...layoutCabinet(c).parts.map((p) => p.material)
-			].includes(q.materialId)).map((c) => `${location(c) ?? ("face" in c.place ? faceName(c.place.face, void 0, c.place.s + c.width / 2) : `楼层${c.level ?? "L1"}`)}·${c.name ?? c.id}`),
-			...(plan.decor?.recesses ?? []).filter((r) => r.back === q.materialId).map((r) => `${location(r) ?? ("face" in r.host ? faceName(r.host.face) : "宿主" + ("panel" in r.host ? r.host.panel : r.host.cabinet))}·${r.name ?? r.id}`)
-		])];
-		q.overridden = matching.some((s) => s.overridden) || panels.some((p) => p.material !== styleOf(plan)?.roles["wall.accent"]);
-		q.count = cabinets.length;
-	}
-	return [...quantities.values()].sort((a, b) => a.materialId.localeCompare(b.materialId));
-}
-/** Longest adjacent room wins for a whole-face query; point queries can pass opts.room. */
-function faceRoom(plan, face) {
-	const w = plan.walls.find((w) => w.id === face.wall);
-	if (!w) return void 0;
-	const rooms = roomsBesideWall(plan, w.id)[face.side === 1 ? "positive" : "negative"], axis = faceAxis(plan, face);
-	const length = (r) => {
-		const ss = r.poly.filter((p) => Math.abs(dot$2(sub$1(p, axis.at(0)), axis.normal)) < 30).map((p) => Math.max(0, Math.min(axis.length, dot$2(sub$1(p, w.a), wallDir(w)))));
-		return ss.length ? Math.max(...ss) - Math.min(...ss) : 0;
-	};
-	return [...rooms].sort((a, b) => length(b) - length(a) || polygonArea(b.poly) - polygonArea(a.poly))[0];
-}
-/** Direction is from the room toward the wall, rotated by plan.north when present. */
-function wallLocation(plan, face, room, s) {
-	if (!plan.walls.some((w) => w.id === face.wall)) return `${face.wall}（宿主缺失）`;
-	const axis = faceAxis(plan, face), n = axis.normalAt(s ?? axis.length / 2);
-	const angle = ((Math.atan2(-n[0], n[1]) * 180 / Math.PI - (plan.north ?? 0)) % 360 + 360) % 360;
-	const direction = (plan.north === void 0 ? [
-		"上",
-		"右",
-		"下",
-		"左"
-	] : [
-		"北",
-		"东",
-		"南",
-		"西"
-	])[Math.round(angle / 90) % 4];
-	const name = room ? plan.rooms.find((r) => r.id === room)?.name ?? room : void 0;
-	return name ? `${name}${direction}墙` : `${axis.wall.name ?? axis.wall.id}（${face.side === 1 ? "正侧" : "反侧"}·${direction}）`;
-}
-// src/core/decor/embed.ts
-function wallEmbed(plan, item) {
-	if ("host" in item) return "face" in item.host && item.rect.s ? {
-		id: item.id,
-		face: item.host.face,
-		s: item.rect.s,
-		z: item.rect.z,
-		depth: item.depth
-	} : void 0;
-	if (!item.embed) return void 0;
-	if ("place" in item) return "face" in item.place ? {
-		id: item.id,
-		face: item.place.face,
-		s: [item.place.s, item.place.s + item.width],
-		z: item.z,
-		depth: item.embed
-	} : void 0;
-	if (!item.against) return void 0;
-	const wall = faceWall(plan, item.against.face), ss = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall)));
-	return {
-		id: item.id,
-		face: item.against.face,
-		s: [Math.min(...ss), Math.max(...ss)],
-		z: [item.z ?? 0, (item.z ?? 0) + item.height],
-		depth: item.embed
-	};
-}
-function embedsOf(plan, decor) {
-	return [
-		...decor.recesses,
-		...decor.cabinets,
-		...decor.furniture
-	].flatMap((item) => {
-		try {
-			const e = wallEmbed(plan, item);
-			return e ? [e] : [];
-		} catch {
-			return [];
-		}
-	});
-}
-function embedFootprint(plan, e) {
-	const a = faceAxis(plan, e.face), depth = e.depth === "through" ? a.wall.thickness : e.depth;
-	return [
-		a.at(e.s[0]),
-		a.at(e.s[1]),
-		a.at(e.s[1], -depth),
-		a.at(e.s[0], -depth)
-	];
-}
-function protectedFact(id, host, label) {
-	const certainty = host.evidence?.certainty ?? "unknown";
-	return {
-		id,
-		code: "protected",
-		level: "warn",
-		text: `这面在方案里标为${label}（${certainty === "seen" ? "读图看到" : certainty === "inferred" ? "读图推断，没确认" : "读图把握程度未知"}）。嵌入、挖槽能不能做、能挖多深，需要专业人员到现场确认。`
-	};
-}
-/** Geometry errors block the edit; protected facts are warnings only. Pass source plan to preserve original protection. */
-function checkEmbed(plan, decor, item, originalPlan = plan) {
-	const issues = [], issue = (code, text) => issues.push({
-		id: item.id,
-		code,
-		level: "error",
-		text
-	});
-	const requestedDepth = "host" in item ? item.depth : item.embed;
-	if (requestedDepth !== void 0 && requestedDepth !== "through" && (!Number.isFinite(requestedDepth) || requestedDepth < 0 || "host" in item && requestedDepth === 0)) {
-		issue("invalid", "嵌入深度必须是有效正数");
-		return issues;
-	}
-	if ("host" in item && !("face" in item.host)) {
-		const host = "panel" in item.host ? decor.panels.find((p) => p.id === item.host.panel) : decor.cabinets.find((c) => c.id === item.host.cabinet);
-		if (!host) {
-			issue("host-missing", "挖洞的造型或柜体不存在，没地方挂了");
-			return issues;
-		}
-		const thickness = "thickness" in host ? host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness : host.depth;
-		if (item.depth !== "through" && item.depth > thickness) issue("host-depth", `宿主只有 ${thickness} mm 厚，要挖墙请按墙面嵌入处理`);
-		const span = "thickness" in host ? panelSpan(plan, host) : void 0;
-		const width = span ? span.s[1] - span.s[0] : host.width, z = span?.z ?? host.z;
-		if (!item.rect.u || item.rect.u[0] < 0 || item.rect.u[1] > width || item.rect.z[0] < z[0] || item.rect.z[1] > z[1]) issue("out-of-face", "挖洞范围超出宿主");
-		return issues;
-	}
-	let e;
-	try {
-		e = wallEmbed(plan, item);
-	} catch {
-		issue("host-missing", "宿主墙不存在，没地方挂了");
-		return issues;
-	}
-	if (!e) {
-		if ("embed" in item && item.embed) issue("host-missing", "嵌入需要指定靠墙的墙面");
-		return issues;
-	}
-	let wall;
-	try {
-		wall = faceWall(plan, e.face);
-	} catch {
-		issue("host-missing", "宿主墙不存在，没地方挂了");
-		return issues;
-	}
-	if (wall.bulge) {
-		issue("arc-unsupported", "弧墙暂只支持整面材质，嵌入暂不支持");
-		return issues;
-	}
-	const run = faceRun(plan, e.face), lo = run[0].s[0], hi = run[run.length - 1].s[1];
-	if (e.s[0] < lo - 1e-5 || e.s[1] > hi + 1e-5 || e.z[0] < 0) issue("out-of-face", "超出这面墙了");
-	const axis = faceAxis(plan, e.face), covered = run.filter((p) => overlap(p.s, e.s));
-	for (const part of covered) {
-		const w = part.wall, depth = e.depth === "through" ? w.thickness : e.depth, extent = faceExtent(plan, part.face), visible = ordered(runS(part, extent[0]), runS(part, extent[1]));
-		if (faceIntervals(plan, part.face).map((v) => ordered(runS(part, v[0]), runS(part, v[1]))).reduce((sum, v) => sum + Math.max(0, Math.min(v[1], e.s[1]) - Math.max(v[0], e.s[0])), 0) < Math.min(part.s[1], e.s[1]) - Math.max(part.s[0], e.s[0]) - .01 || Math.max(e.s[0], part.s[0]) < visible[0] - .01 || Math.min(e.s[1], part.s[1]) > visible[1] + .01 || e.z[1] > effectiveWallHeight(plan, w) + 1e-7) issue("out-of-face", "超出这面墙看得见的范围或墙高了");
-		if (depth >= w.thickness) issue("through-wall", `挖到 ${w.thickness} mm 就穿了；请到改造里开洞，添加结构洞口`);
-		if (w.kind === "glass" || ["half", "half-glass"].includes(w.kind) && e.z[1] > (w.lowHeight ?? 1)) issue("wall-kind", w.kind === "glass" ? "玻璃隔断上挖不了" : `矮墙实体只有 ${w.lowHeight ?? 1} m 高`);
-		for (const o of plan.openings.filter((o) => o.wall === w.id)) if (overlap(e.s, ordered(runS(part, o.offset), runS(part, o.offset + o.width))) && overlap(e.z, [o.sill, o.head])) issue("over-opening", `这里是${o.kind.includes("window") ? "窗洞" : "门洞"} ${o.id}`);
-		const protectedWall = [w, originalPlan.walls.find((v) => v.id === w.id) ?? originalPlan.walls.filter((v) => w.id.startsWith(`${v.id}~`)).sort((a, b) => b.id.length - a.id.length)[0]].find((v) => v && ["bearing", "exterior"].includes(v.kind));
-		if (protectedWall) issues.push(protectedFact(item.id, protectedWall, protectedWall.kind === "exterior" ? "外墙" : "承重墙"));
-	}
-	for (const other of embedsOf(plan, decor)) {
-		if (other.id === item.id || !overlap(e.z, other.z)) continue;
-		const ow = faceWall(plan, other.face);
-		if (levelOf(plan, ow).id !== levelOf(plan, wall).id || ow.bulge) continue;
-		const oa = faceAxis(plan, other.face);
-		if (dot$2(axis.normal, oa.normal) > -.999999) continue;
-		const shared = covered.find((p) => p.wall.id === ow.id) ?? covered.find((p) => faceRun(plan, other.face).some((q) => q.wall.id === p.wall.id));
-		if (!shared) continue;
-		const projected = ordered(...other.s.map((s) => oa.at(s)).map((p) => dot$2(sub$1(p, wall.a), wallDir(wall))));
-		const depth = e.depth === "through" ? shared.wall.thickness : e.depth, otherDepth = other.depth === "through" ? shared.wall.thickness : other.depth;
-		if (overlap(e.s, projected) && depth + otherDepth >= shared.wall.thickness) issue("meet-other-side", `这面墙另一侧也挖了 ${otherDepth} mm，两边合计 ${depth + otherDepth} mm，达到或超过墙厚 ${shared.wall.thickness} mm`);
-	}
-	const footprint = embedFootprint(plan, e), intersects = (poly) => intersection([[footprint]], [[poly]]).some((r) => polygonArea(r[0]) > 1e-6);
-	for (const s of plan.shafts ?? []) if (levelOf(plan, s).id === levelOf(plan, wall).id && intersects(s.poly)) issue("into-shaft", `这里是管道井 / 烟道 ${s.id} 的位置`);
-	for (const c of plan.columns ?? []) {
-		const original = originalPlan.columns?.find((v) => v.id === c.id), protectedColumn = c.kind === "bearing" ? c : original?.kind === "bearing" ? original : void 0;
-		if (protectedColumn && levelOf(plan, c).id === levelOf(plan, wall).id && intersects(columnFootprint(c))) issues.push(protectedFact(item.id, protectedColumn, "承重柱"));
-	}
-	return issues.filter((i, n) => issues.findIndex((j) => j.code === i.code && j.text === i.text) === n);
-}
-// src/core/decor/validate.ts
-var finite$2 = (x) => typeof x === "number" && Number.isFinite(x);
-var point$2 = (x) => Array.isArray(x) && x.length === 2 && x.every(finite$2);
-var interval = (x) => point$2(x) && x[1] > x[0];
-var obj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
-var face = (x) => obj(x) && typeof x.wall === "string" && [1, -1].includes(x.side);
-var span = (x) => obj(x) && face(x.face) && interval(x.s) && interval(x.z);
-var positive = (x) => finite$2(x) && x > 0;
-var depth = (x) => x === "through" || positive(x);
-var optional = (x, check) => x === void 0 || check(x);
-var roles = [
-	"floor.main",
-	"floor.wet",
-	"floor.outdoor",
-	"threshold",
-	"wall.main",
-	"wall.wet",
-	"wall.accent",
-	"ceiling",
-	"skirting",
-	"wood.main",
-	"cabinet.front",
-	"cabinet.carcass",
-	"stone.top",
-	"metal",
-	"fabric.main",
-	"fabric.accent",
-	"rug"
-];
-function validateDecorData(plan, decor = plan.decor, originalPlan = plan) {
-	if (decor === void 0) return [];
-	const issues = [], add = (id, code, text, level = "error") => issues.push({
-		id,
-		code,
-		level,
-		text
-	});
-	const invalid = (id, text) => add(id, "invalid", text);
-	if (!obj(decor) || decor.version !== 1 || typeof decor.style !== "string") {
-		invalid("decor", "装修层必须是 version=1 的对象，并指定 style");
-		return issues;
-	}
-	for (const k of [
-		"materials",
-		"surfaces",
-		"furniture",
-		"cabinets",
-		"panels",
-		"recesses"
-	]) if (!Array.isArray(decor[k])) invalid("decor", `${k} 必须为数组`);
-	if (!optional(decor.presets, Array.isArray)) invalid("decor", "presets 必须为数组");
-	if (issues.length) return issues;
-	const structural = [
-		...plan.walls,
-		...plan.openings,
-		...plan.beams,
-		...plan.rooms,
-		...plan.questions,
-		...plan.changes,
-		...plan.levels ?? [],
-		...plan.columns ?? [],
-		...plan.shafts ?? [],
-		...plan.stairs ?? [],
-		...plan.voids ?? []
-	];
-	const seen = new Set(structural.map((e) => e.id)), levelIds = levelsOf(plan).map((l) => l.id);
-	const groups = {
-		materials: decor.materials,
-		presets: decor.presets ?? [],
-		surfaces: decor.surfaces,
-		furniture: decor.furniture,
-		cabinets: decor.cabinets,
-		panels: decor.panels,
-		recesses: decor.recesses
-	};
-	for (const [key, items] of Object.entries(groups)) for (const e of items) {
-		if (!obj(e) || typeof e.id !== "string" || !e.id) {
-			invalid("decor", `${key} 条目需要有效 id`);
-			continue;
-		}
-		if (seen.has(e.id)) add(e.id, "duplicate-id", `重复 id：${e.id}`);
-		seen.add(e.id);
-		if (!["materials", "presets"].includes(key) && (!["user", "agent"].includes(e.by) || !["pending", "confirmed"].includes(e.status))) invalid(e.id, "构件必须指定 by 和 status");
-		if (e.level !== void 0 && !levelIds.includes(e.level)) invalid(e.id, "楼层不存在");
-		if (e.ack !== void 0 && (!obj(e.ack) || typeof e.ack.by !== "string")) invalid(e.id, "ack 需要 by");
-	}
-	if (issues.some((i) => i.code === "invalid")) return issues;
-	const materialIds = new Set(decor.materials.map((m) => m.id)), mat = (id, value) => {
-		if (typeof value !== "string" || !materialIds.has(value)) add(id, "material-missing", `材料 ${String(value)} 未保存在 decor.materials`);
-	};
-	for (const m of decor.materials) {
-		if (typeof m.name !== "string" || ![
-			"wood-floor",
-			"tile",
-			"stone",
-			"paint",
-			"texture-paint",
-			"wallpaper",
-			"veneer",
-			"microcement",
-			"laminate",
-			"fabric",
-			"leather",
-			"metal",
-			"glass",
-			"rattan",
-			"other"
-		].includes(m.category) || typeof m.color !== "string" || !/^#[\da-f]{3}(?:[\da-f]{3})?$/i.test(m.color)) invalid(m.id, "材料名称、分类或 sRGB 十六进制颜色无效");
-		if (m.texture && (!obj(m.texture) || ![
-			"planks",
-			"tiles",
-			"herringbone",
-			"grain",
-			"speckle",
-			"veins",
-			"weave"
-		].includes(m.texture.kind) || !optional(m.texture.size, (x) => point$2(x) && x.every(positive)) || !optional(m.texture.joint, (x) => finite$2(x) && x >= 0))) invalid(m.id, "材料纹理参数无效");
-		if (m.pbr) {
-			if (!obj(m.pbr)) invalid(m.id, "PBR 必须是对象");
-			for (const v of [
-				m.pbr.roughness,
-				m.pbr.metalness,
-				m.pbr.sheen
-			]) if (!optional(v, (x) => finite$2(x) && x >= 0 && x <= 1)) invalid(m.id, "PBR 系数须在 0–1");
-			if (m.pbr.maps && !obj(m.pbr.maps)) invalid(m.id, "贴图必须是本地路径对象");
-			for (const path of Object.values(m.pbr.maps ?? {})) if (typeof path !== "string" || !path.trim() || /^(?:[a-z][a-z\d+.-]*:|[/\\])/i.test(path.trim())) invalid(m.id, "贴图只能是本地相对路径，禁止远程地址、协议和绝对路径");
-		}
-	}
-	for (const p of decor.presets ?? []) {
-		if (typeof p.name !== "string" || !obj(p.roles) || Object.keys(p.roles).some((r) => !roles.includes(r))) {
-			invalid(p.id, "风格名称或材料角色无效");
-			continue;
-		}
-		Object.values(p.roles).forEach((v) => mat(p.id, v));
-		if (p.rooms && (!Array.isArray(p.rooms) || p.rooms.some((r) => !obj(r) || !Array.isArray(r.match) || !r.match.every((x) => typeof x === "string") || r.floor && !roles.includes(r.floor) || r.wall && !roles.includes(r.wall)))) invalid(p.id, "房间材料规则无效");
-	}
-	if (![...STYLE_PRESETS, ...decor.presets ?? []].some((s) => s.id === decor.style)) invalid("decor", "整体风格不存在");
-	for (const s of decor.surfaces) {
-		const t = s.target;
-		if (!obj(t) || Object.keys(t).filter((k) => [
-			"floor",
-			"ceiling",
-			"face"
-		].includes(k)).length !== 1 || ("face" in t ? !face(t.face) || !optional(t.s, interval) || !optional(t.z, interval) : !("floor" in t || "ceiling" in t))) invalid(s.id, "面的覆盖需要一种有效目标及递增区间");
-		mat(s.id, s.material);
-		if (s.layout && (![
-			"straight",
-			"staggered",
-			"herringbone",
-			"chevron",
-			"grid",
-			"diagonal"
-		].includes(s.layout.pattern) || !optional(s.layout.size, (x) => point$2(x) && x.every(positive)) || !optional(s.layout.origin, point$2) || !optional(s.layout.angle, finite$2))) invalid(s.id, "铺法参数无效");
-	}
-	for (const f of decor.furniture) {
-		if (typeof f.type !== "string" || (f.in !== void 0 ? typeof f.in !== "string" || !f.in || f.at !== void 0 : !point$2(f.at)) || !point$2(f.size) || !f.size.every(positive) || !positive(f.height) || !(f.in ? optional(f.rot, finite$2) : finite$2(f.rot)) || !optional(f.z, finite$2) || !optional(f.embed, (x) => finite$2(x) && x >= 0) || f.against && (!face(f.against.face) || !finite$2(f.against.gap) || f.against.gap < 0)) invalid(f.id, "家具位置、尺寸、高度、旋转或靠墙参数无效");
-		Object.values(f.materials ?? {}).forEach((v) => mat(f.id, v));
-	}
-	for (const c of decor.cabinets) {
-		if (![
-			"tall",
-			"base",
-			"wall"
-		].includes(c.family) || !obj(c.place) || ("face" in c.place ? !face(c.place.face) || !finite$2(c.place.s) || !optional(c.place.gap, (x) => finite$2(x) && x >= 0) : !("at" in c.place) || !point$2(c.place.at) || !finite$2(c.place.rot)) || !positive(c.width) || !positive(c.depth) || !interval(c.z) || !optional(c.plinth, (x) => finite$2(x) && x >= 0) || !optional(c.embed, (x) => finite$2(x) && x >= 0) || !Array.isArray(c.columns) || !obj(c.materials)) {
-			invalid(c.id, "柜体位置、尺寸、分列或材料无效");
-			continue;
-		}
-		mat(c.id, c.materials.carcass);
-		mat(c.id, c.materials.front);
-		if (c.top && (!positive(c.top.thickness) || !optional(c.top.overhang, (x) => finite$2(x) && x >= 0))) invalid(c.id, "台面尺寸无效");
-		if (c.top) mat(c.id, c.top.material);
-		if (c.cuts && (!Array.isArray(c.cuts) || c.cuts.some((x) => !obj(x) || !interval(x.u) || !interval(x.z) || !depth(x.depth)))) invalid(c.id, "柜体挖洞参数无效");
-		for (const col of c.columns) {
-			if (!obj(col) || !optional(col.width, positive) || !Array.isArray(col.cells)) {
-				invalid(c.id, "柜列参数无效");
-				continue;
-			}
-			for (const cell of col.cells) {
-				if (!obj(cell) || ![
-					"door",
-					"doors",
-					"drawers",
-					"flap",
-					"open",
-					"void",
-					"appliance"
-				].includes(cell.type) || !optional(cell.h, positive) || !optional(cell.count, (x) => Number.isInteger(x) && x >= 0 && x <= 1e3) || !optional(cell.hinge, (x) => ["left", "right"].includes(x))) {
-					invalid(c.id, "柜格参数无效");
-					continue;
-				}
-				if (cell.void && (!obj(cell.void) || !depth(cell.void.depth) || cell.void.top && !finite$2(cell.void.top.z))) invalid(c.id, "柜格挖洞参数无效");
-				if (cell.appliance && (!obj(cell.appliance) || ![
-					"fridge",
-					"washer",
-					"dryer",
-					"oven",
-					"steamer",
-					"dishwasher",
-					"microwave",
-					"tv",
-					"other"
-				].includes(cell.appliance.type) || !optional(cell.appliance.size, (x) => Array.isArray(x) && x.length === 3 && x.every(positive)))) invalid(c.id, "家电位参数无效");
-				if (cell.material) mat(c.id, cell.material);
-				if (cell.void?.top?.material) mat(c.id, cell.void.top.material);
-			}
-		}
-	}
-	for (const p of decor.panels) {
-		if (![
-			"feature",
-			"wainscot",
-			"slats",
-			"skirting",
-			"arch"
-		].includes(p.type) || !positive(p.thickness) || (p.type === "arch" ? typeof p.opening !== "string" || !optional(p.span, span) : !span(p.span))) invalid(p.id, "造型类型、厚度或宿主区间无效");
-		if (p.grooves && (!["v", "h"].includes(p.grooves.dir) || !positive(p.grooves.spacing) || !optional(p.grooves.width, positive))) invalid(p.id, "分缝参数无效");
-		if (p.slats && (!positive(p.slats.width) || !finite$2(p.slats.gap) || p.slats.gap < 0 || !positive(p.slats.depth))) invalid(p.id, "格栅尺寸无效");
-		if (p.frame && (!["flat", "raised"].includes(p.frame.style) || !positive(p.frame.margin))) invalid(p.id, "框线参数无效");
-		if (p.arch && !optional(p.arch.radius, positive)) invalid(p.id, "拱半径无效");
-		mat(p.id, p.material);
-	}
-	for (const r of decor.recesses) {
-		if (!obj(r.host) || Object.keys(r.host).length !== 1 || !obj(r.rect) || !interval(r.rect.z) || !depth(r.depth) || ("face" in r.host ? !face(r.host.face) || !interval(r.rect.s) || r.rect.u !== void 0 || r.kind !== "niche" : !("panel" in r.host || "cabinet" in r.host) || !interval(r.rect.u) || r.rect.s !== void 0 || r.kind !== "hole")) invalid(r.id, "壁龛 / 挖洞的宿主、类型、区间或深度无效");
-		if (r.shelves && (!Array.isArray(r.shelves) || r.shelves.some((h) => !finite$2(h) || h <= r.rect.z[0] || h >= r.rect.z[1]))) invalid(r.id, "层板须在壁龛高度内");
-		if (r.back) mat(r.id, r.back);
-		if (r.trim) mat(r.id, r.trim);
-	}
-	if (decor.cache && (!obj(decor.cache) || Object.values(decor.cache).some((c) => !obj(c) || !Array.isArray(c.box) || c.box.length !== 4 || !c.box.every(finite$2) || c.face && (!Array.isArray(c.face) || c.face.length !== 2 || !c.face.every(point$2))))) invalid("decor", "cache 几何无效");
-	for (const c of Object.values(decor.cache ?? {})) {
-		if (c.pose && (!point$2(c.pose.at) || !finite$2(c.pose.rot) || !finite$2(c.pose.z))) invalid("decor", "cache.pose 几何无效");
-		if (c.anchor && (typeof c.anchor.wall !== "string" || !point$2(c.anchor.a) || !point$2(c.anchor.b))) invalid("decor", "cache.anchor 几何无效");
-	}
-	if (issues.some((i) => i.code === "invalid")) return issues;
-	const checkSpan = (id, sp, embedded = false) => {
-		try {
-			const f = faceFrame(plan, sp), run = faceRun(plan, sp.face);
-			if (sp.z[0] < 0 || run.filter((p) => overlap(p.s, sp.s)).some((p) => {
-				const e = faceExtent(plan, p.face), s = ordered(runS(p, e[0]), runS(p, e[1]));
-				return Math.max(sp.s[0], p.s[0]) < s[0] - .01 || Math.min(sp.s[1], p.s[1]) > s[1] + .01 || sp.z[1] > effectiveWallHeight(plan, p.wall) + 1e-7;
-			})) add(id, "out-of-face", "超出这面墙看得见的范围或墙高了");
-			if (embedded && (f.wall.kind === "glass" || ["half", "half-glass"].includes(f.wall.kind) && sp.z[1] > (f.wall.lowHeight ?? 1))) add(id, "wall-kind", "玻璃或矮墙实体范围无法容纳这件柜子");
-			if (embedded) {
-				for (const part of run) for (const o of plan.openings.filter((o) => o.wall === part.wall.id)) if (overlap(sp.s, ordered(runS(part, o.offset), runS(part, o.offset + o.width))) && overlap(sp.z, [o.sill, o.head])) add(id, "over-opening", `柜子与洞口 ${o.id} 重叠`);
-			}
-		} catch (e) {
-			add(id, e.code ?? "invalid", e.message);
-		}
-	};
-	for (const p of decor.panels) try {
-		checkSpan(p.id, panelSpan(plan, p));
-	} catch (e) {
-		add(p.id, "host-missing", e.message);
-	}
-	for (const c of decor.cabinets) {
-		issues.push(...layoutCabinet(c).issues);
-		if ("face" in c.place) checkSpan(c.id, {
-			face: c.place.face,
-			s: [c.place.s, c.place.s + c.width],
-			z: c.z
-		}, true);
-	}
-	for (const item of [
-		...decor.recesses,
-		...decor.cabinets,
-		...decor.furniture
-	]) try {
-		issues.push(...checkEmbed(plan, decor, item, originalPlan));
-	} catch (e) {
-		add(item.id, "host-missing", e.message);
-	}
-	for (const f of decor.furniture) {
-		if (f.against && !plan.walls.some((w) => w.id === f.against.face.wall)) add(f.id, "host-missing", "靠墙家具的墙没了，保留原地", "info");
-		if (f.in && furniturePose({
-			...plan,
-			decor
-		}, f).missing) add(f.id, "host-missing", `家具宿主 ${f.in} 不存在`);
-	}
-	for (const s of decor.surfaces) if ("face" in s.target) {
-		const t = s.target, w = plan.walls.find((w) => w.id === t.face.wall);
-		if (!w) add(s.id, "host-missing", "墙面不存在");
-		else if (w.bulge && (t.s || t.z)) add(s.id, "arc-unsupported", "弧墙暂只支持整面材质");
-		else if (t.s || t.z) checkSpan(s.id, {
-			face: t.face,
-			s: t.s ?? faceExtent(plan, t.face),
-			z: t.z ?? [0, effectiveWallHeight(plan, w)]
-		});
-	} else if (!plan.rooms.some((r) => r.id === ("floor" in s.target ? s.target.floor : "ceiling" in s.target ? s.target.ceiling : ""))) add(s.id, "room-missing", "房间删了或合并了，覆盖退回风格默认", "info");
-	return issues.filter((i, n) => issues.findIndex((j) => j.id === i.id && j.code === i.code && j.text === i.text) === n);
-}
-/** Imported JSON is untrusted: malformed nested fields are diagnostics, never exceptions. */
-function validateDecorRaw(plan, decor = plan.decor, originalPlan = plan) {
-	try {
-		return validateDecorData(plan, decor, originalPlan);
-	} catch (error) {
-		return [{
-			id: "decor",
-			code: "invalid",
-			level: "error",
-			text: `装修数据结构无效：${error instanceof Error ? error.message : String(error)}`
-		}];
-	}
-}
-/** Host diagnostics use the same resolution as the status UI; malformed input stays diagnostic-only. */
-function validateDecor(plan, decor = plan.decor, originalPlan = plan) {
-	const raw = validateDecorRaw(plan, decor, originalPlan);
-	if (raw.some((i) => i.code === "invalid") || !decor) return raw;
-	try {
-		return originalPlan !== plan ? resolveDecor({
-			...originalPlan,
-			decor
-		}, plan).issues : decorStatus({
-			...plan,
-			decor
-		}).issues;
-	} catch {
-		return raw;
-	}
-}
-// src/core/decor/integration.ts
-function decorStats(plan) {
-	const d = plan.decor;
-	if (!d) return void 0;
-	const after = plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan;
-	const resolved = resolveDecor(plan, after);
-	return {
-		furniture: d.furniture.length,
-		cabinets: d.cabinets.length,
-		panels: d.panels.length,
-		recesses: d.recesses.length,
-		surfaces: d.surfaces.length,
-		materials: d.materials.length,
-		pending: decorItems(d).filter((x) => x.status === "pending").length,
-		total: decorItems(d).length,
-		issues: resolved.issues.length,
-		materialAreas: materialTakeoff({
-			...after,
-			decor: resolved.decor
-		})
-	};
-}
-/** Only confirmed structural changes are the decor host context; never replay a changed view twice. */
-function validatePlanDecor(plan) {
-	if (plan.decor === void 0) return [];
-	const shape = validateDecor(plan).filter((i) => [
-		"invalid",
-		"duplicate-id",
-		"material-missing"
-	].includes(i.code));
-	if (shape.some((i) => i.code === "invalid")) return shape;
-	return resolveDecor(plan, plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan).issues;
-}
-// src/core/questions.ts
-var QUESTION_STATUSES = [
-	"open",
-	"answered",
-	"resolved"
-];
-var QUESTION_OUTCOMES = [
-	"changed",
-	"confirmed",
-	"inferred",
-	"noted",
-	"ask",
-	"withdrawn"
-];
-function questionStatus(q) {
-	if (QUESTION_STATUSES.includes(q.status)) return q.status;
-	if (!q.answer?.trim()) return "open";
-	if (!q.reply) return "answered";
-	return q.reply.outcome === "ask" ? "open" : "resolved";
-}
-function questionCounts(plan) {
-	const counts = {
-		open: 0,
-		answered: 0,
-		resolved: 0
-	};
-	for (const q of plan.questions) counts[questionStatus(q)]++;
-	return counts;
-}
-function answerQuestion(q, text, by, at) {
-	text = text.trim();
-	if (!text) throw new Error(`问题卡 ${q.id}：答复不能为空，请填写答复`);
-	const next = { ...q };
-	if (q.reply) {
-		next.log = [...q.log ?? []];
-		if (q.answer?.trim()) next.log.push({
-			role: "user",
-			text: q.answer,
-			by: q.answeredBy,
-			at: q.answeredAt
-		});
-		next.log.push({
-			role: "agent",
-			...q.reply,
-			...q.reply.changed ? { changed: [...q.reply.changed] } : {}
-		});
-		delete next.reply;
-	}
-	return {
-		...next,
-		answer: text,
-		answeredBy: by,
-		answeredAt: at,
-		status: "answered"
-	};
-}
-function resolveQuestion(q, { outcome, text, changed, by = "Agent", at }) {
-	const status = questionStatus(q);
-	if (!QUESTION_OUTCOMES.includes(outcome)) throw new Error(`问题卡 ${q.id}：不认识处理结果 ${outcome}，请使用 ${QUESTION_OUTCOMES.join("、")}`);
-	if (status !== "answered" && !(outcome === "withdrawn" && status === "open")) throw new Error(`问题卡 ${q.id}：现在是 ${status}（${status === "open" ? "待回答" : "已处理"}），请先记录用户答复，status 变为 answered 后再处理${status === "open" ? "；不用再问可用 withdrawn 撤回" : ""}`);
-	text = text.trim();
-	if (!text) throw new Error(`问题卡 ${q.id}：回复不能为空，请说明处理结果`);
-	return {
-		...q,
-		status: outcome === "ask" ? "open" : "resolved",
-		reply: {
-			outcome,
-			text,
-			...changed ? { changed: [...new Set(changed)] } : {},
-			by,
-			at
-		}
-	};
-}
-/** 包括原始构件及成功改造产生的构件（即使后续又移除）。 */
-function questionElementIds(plan) {
-	const ids = new Set(Object.keys(collection).flatMap((type) => elements(plan, type).map((e) => e.id)));
-	if (plan.changes.length) {
-		for (const r of applyChanges(plan, plan.changes).results) if (r.ok) for (const id of r.affected) ids.add(id);
-	}
-	return ids;
-}
-// src/core/validate.ts
-var WALL_KINDS = [
-	"exterior",
-	"bearing",
-	"partition",
-	"glass",
-	"half",
-	"half-glass"
-];
-var OPENING_KINDS = [
-	"door",
-	"sliding",
-	"doorway",
-	"window",
-	"floor-window",
-	"bay-window",
-	"open-balcony"
-];
-var finite$1 = (x) => typeof x === "number" && Number.isFinite(x);
-var point$1 = (p) => Array.isArray(p) && p.length === 2 && p.every(finite$1);
-function intersects$1(a, b, c, d) {
-	const cross = (p, q, r) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
-	const on = (p, q, r) => Math.abs(cross(p, q, r)) < 1e-7 && r[0] >= Math.min(p[0], q[0]) && r[0] <= Math.max(p[0], q[0]) && r[1] >= Math.min(p[1], q[1]) && r[1] <= Math.max(p[1], q[1]);
-	const x = cross(a, b, c), y = cross(a, b, d), z = cross(c, d, a), w = cross(c, d, b);
-	return x * y < 0 && z * w < 0 || on(a, b, c) || on(a, b, d) || on(c, d, a) || on(c, d, b);
-}
-function invalidPolygon(poly) {
-	if (polygonArea(poly) < 1e-7) return true;
-	for (let i = 0; i < poly.length; i++) {
-		const a = poly[i], b = poly[(i + 1) % poly.length];
-		if (a[0] === b[0] && a[1] === b[1]) return true;
-		for (let j = i + 1; j < poly.length; j++) if (j !== i + 1 && !(i === 0 && j === poly.length - 1) && intersects$1(a, b, poly[j], poly[(j + 1) % poly.length])) return true;
-	}
-	return false;
-}
-function validatePlan(plan) {
-	const issues = [], error = (code, message, ref) => issues.push({
-		level: "error",
-		code,
-		message,
-		...ref ? { ref } : {}
-	});
-	if (!plan || typeof plan !== "object") {
-		error("shape", "方案必须是对象");
-		return issues;
-	}
-	if (plan.format !== "floorplan-structure" || plan.version !== 2) error("format", "方案必须使用 floorplan-structure v2");
-	if (typeof plan.title !== "string" || !finite$1(plan.ceiling) || plan.ceiling <= 0) error("plan", "方案标题或层高无效");
-	for (const k of [
-		"walls",
-		"openings",
-		"beams",
-		"rooms",
-		"questions",
-		"changes"
-	]) if (!Array.isArray(plan[k])) error("shape", `${k} 必须是数组`);
-	for (const k of [
-		"levels",
-		"columns",
-		"shafts",
-		"stairs",
-		"voids"
-	]) if (plan[k] !== void 0 && !Array.isArray(plan[k])) error("shape", `${k} 必须是数组`);
-	if (issues.some((i) => i.code === "shape")) return issues;
-	const seen = /* @__PURE__ */ new Set();
-	for (const [type, items] of Object.entries({
-		wall: plan.walls,
-		opening: plan.openings,
-		beam: plan.beams,
-		room: plan.rooms,
-		question: plan.questions,
-		change: plan.changes,
-		level: plan.levels ?? [],
-		column: plan.columns ?? [],
-		shaft: plan.shafts ?? [],
-		stair: plan.stairs ?? [],
-		void: plan.voids ?? []
-	})) for (const item of items) {
-		if (!item || typeof item !== "object") {
-			error("shape", `${type} 包含非对象条目`);
-			continue;
-		}
-		const ref = [
-			"wall",
-			"opening",
-			"beam",
-			"room",
-			"column",
-			"shaft",
-			"stair",
-			"void"
-		].includes(type) ? {
-			type,
-			id: item.id
-		} : void 0;
-		if (typeof item.id !== "string" || !item.id) error("id", `${type} 缺少有效 id`, ref);
-		else if (seen.has(item.id)) error("duplicate-id", `重复 id：${item.id}`, ref);
-		else seen.add(item.id);
-		if ("evidence" in item && item.evidence && ![
-			"seen",
-			"inferred",
-			"unknown"
-		].includes(item.evidence.certainty)) error("enum", `${item.id} 的证据确定度不认识`, ref);
-	}
-	if (issues.some((i) => i.code === "shape")) return issues;
-	const levels = levelsOf(plan).filter(Boolean), levelIds = new Set(levels.map((l) => l.id));
-	if (plan.levels && !plan.levels.length) error("levels", "levels 至少包含一层，单层可省略 levels");
-	levels.forEach((l, i) => {
-		if (typeof l.name !== "string" || !finite$1(l.elevation) || l.ceiling !== void 0 && (!finite$1(l.ceiling) || l.ceiling <= 0)) error("level", `楼层 ${l.id} 的名称、标高或层高无效`);
-		if (i > 0 && l.elevation <= levels[i - 1].elevation) error("level-order", "各层标高必须按数组顺序严格递增");
-	});
-	for (const e of [
-		...plan.walls,
-		...plan.beams,
-		...plan.rooms,
-		...plan.questions,
-		...plan.columns ?? [],
-		...plan.shafts ?? [],
-		...plan.stairs ?? [],
-		...plan.voids ?? []
-	].filter(Boolean)) if (e.level !== void 0 && !levelIds.has(e.level)) error("level-reference", `构件 ${e.id} 的楼层 ${e.level} 不存在`);
-	for (const e of [
-		...plan.shafts ?? [],
-		...plan.stairs ?? [],
-		...plan.voids ?? []
-	].filter(Boolean)) {
-		if (!Array.isArray(e.poly) || e.poly.length < 3 || !e.poly.every(point$1)) {
-			error("extra-points", `构件 ${e.id} 需要至少三个有效顶点`);
-			continue;
-		}
-		if (invalidPolygon(e.poly)) error("extra-polygon", `构件 ${e.id} 多边形退化或自交`);
-	}
-	for (const c of (plan.columns ?? []).filter(Boolean)) {
-		if (!point$1(c.center) || !point$1(c.size) || c.size.some((s) => s <= 0) || c.shape === "round" && c.size[0] !== c.size[1] || c.rotation !== void 0 && !finite$1(c.rotation)) error("column", `柱 ${c.id} 的位置、尺寸或旋转无效`);
-		if (!["rect", "round"].includes(c.shape) || !["bearing", "decorative"].includes(c.kind)) error("enum", `柱 ${c.id} 的类型无效`);
-	}
-	for (const s of (plan.shafts ?? []).filter(Boolean)) if (![
-		"flue",
-		"pipe",
-		"vent",
-		"other"
-	].includes(s.kind)) error("enum", `管道井 ${s.id} 类型无效`);
-	for (const s of (plan.stairs ?? []).filter(Boolean)) {
-		if (!levelIds.has(s.level) || !levelIds.has(s.to) || s.level === s.to) error("stair-level", `楼梯 ${s.id} 的起止楼层必须存在且不同`);
-		else if (levels.find((l) => l.id === s.to).elevation <= levels.find((l) => l.id === s.level).elevation) error("stair-direction", `楼梯 ${s.id} 的目标层必须高于起点层`);
-		if (!Array.isArray(s.path) || s.path.length < 2 || !s.path.every(point$1) || s.path.slice(1).some((p, i) => p[0] === s.path[i][0] && p[1] === s.path[i][1])) error("stair-path", `楼梯 ${s.id} 的上行路径需要至少两个不重合的有效点`);
-		if (!finite$1(s.width) || s.width <= 0 || s.steps !== void 0 && (!Number.isInteger(s.steps) || s.steps <= 0)) error("stair-size", `楼梯 ${s.id} 的宽度或踏步数无效`);
-		if (![
-			"straight",
-			"L",
-			"U",
-			"spiral"
-		].includes(s.kind)) error("enum", `楼梯 ${s.id} 类型无效`);
-	}
-	for (const v of (plan.voids ?? []).filter(Boolean)) if (!levelIds.has(v.level)) error("level-reference", `挑空 ${v.id} 必须指定有效楼层`);
-	const validWalls = plan.walls.filter((w) => w && point$1(w.a) && point$1(w.b) && (w.bulge === void 0 || finite$1(w.bulge)));
-	const safePlan = {
-		...plan,
-		walls: validWalls,
-		rooms: plan.rooms.filter((r) => r && Array.isArray(r.poly) && r.poly.every(point$1))
-	};
-	for (const w of plan.walls.filter(Boolean)) {
-		const ref = {
-			type: "wall",
-			id: w.id
-		};
-		if (!validWalls.includes(w) || !finite$1(w.thickness) || w.thickness <= 0 || validWalls.includes(w) && wallLength(w) <= 1e-7) error("wall-geometry", `墙 ${w.id} 的端点、厚度或长度无效`, ref);
-		if (!WALL_KINDS.includes(w.kind)) error("enum", `墙 ${w.id} 的类型不认识`, ref);
-		if (w.height !== void 0 && (!finite$1(w.height) || w.height <= 0) || w.lowHeight !== void 0 && (!finite$1(w.lowHeight) || w.lowHeight < 0)) error("height", `墙 ${w.id} 的高度无效`, ref);
-	}
-	for (const o of plan.openings.filter(Boolean)) {
-		const ref = {
-			type: "opening",
-			id: o.id
-		}, w = validWalls.find((w) => w.id === o.wall);
-		if (!OPENING_KINDS.includes(o.kind)) error("enum", `洞口 ${o.id} 的类型不认识`, ref);
-		if (!w) error("opening-host", `洞口 ${o.id} 的宿主墙 ${o.wall} 不存在或几何无效`, ref);
-		else {
-			if (![o.offset, o.width].every(finite$1) || o.width <= 0 || o.offset < 0 || o.offset + o.width > wallLength(w) + 1e-5) error("opening-range", `洞口 ${o.id} 超出墙长或宽度无效`, ref);
-			if (o.head > effectiveWallHeight(safePlan, w) + 1e-7) error("opening-head", `洞口 ${o.id} 洞顶超过墙高`, ref);
-		}
-		if (![o.sill, o.head].every(finite$1) || o.sill < 0 || o.sill >= o.head) error("opening-height", `洞口 ${o.id} 洞底必须非负且低于洞顶`, ref);
-		if (o.swing && (!["start", "end"].includes(o.swing.hinge) || ![1, -1].includes(o.swing.side))) error("enum", `洞口 ${o.id} 开向无效`, ref);
-		if (o.panes && (!Array.isArray(o.panes) || !o.panes.length || o.panes.some((p) => !p || !finite$1(p.width) || p.width <= 0 || ![
-			"fixed",
-			"casement",
-			"sliding"
-		].includes(p.kind)))) error("pane", `洞口 ${o.id} 分扇比例或类型无效`, ref);
-	}
-	for (let i = 0; i < plan.openings.length; i++) for (let j = i + 1; j < plan.openings.length; j++) {
-		const a = plan.openings[i], b = plan.openings[j];
-		if (a && b && a.wall === b.wall && Math.min(a.offset + a.width, b.offset + b.width) - Math.max(a.offset, b.offset) > 1e-5) error("opening-overlap", `同墙洞口 ${a.id} 与 ${b.id} 重叠`, {
-			type: "opening",
-			id: a.id
-		});
-	}
-	for (const r of plan.rooms.filter(Boolean)) {
-		const ref = {
-			type: "room",
-			id: r.id
-		};
-		if (typeof r.name !== "string" || !Array.isArray(r.poly) || r.poly.length < 3 || !r.poly.every(point$1)) {
-			error("room-points", `房间 ${r.id} 需要名称和至少三个有效顶点`, ref);
-			continue;
-		}
-		let invalid = false;
-		for (let i = 0; i < r.poly.length; i++) for (let j = i + 1; j < r.poly.length; j++) if (j !== i + 1 && !(i === 0 && j === r.poly.length - 1) && intersects$1(r.poly[i], r.poly[(i + 1) % r.poly.length], r.poly[j], r.poly[(j + 1) % r.poly.length])) invalid = true;
-		if (invalid || invalidPolygon(r.poly)) error("room-self-intersection", `房间 ${r.id} 多边形自交`, ref);
-		if (r.ceiling !== void 0 && (!finite$1(r.ceiling) || r.ceiling <= 0) || r.floorOffset !== void 0 && !finite$1(r.floorOffset)) error("height", `房间 ${r.id} 层高或地面抬高无效`, ref);
-	}
-	for (const b of plan.beams.filter(Boolean)) if (!point$1(b.a) || !point$1(b.b) || !finite$1(b.width) || b.width <= 0 || !finite$1(b.bottom) || b.bottom < 0) error("beam", `梁 ${b.id} 的端点、宽度或梁底无效`, {
-		type: "beam",
-		id: b.id
-	});
-	for (const q of plan.questions.filter(Boolean)) if (!["original", "renovation"].includes(q.category) || q.certainty !== void 0 && ![
-		"seen",
-		"inferred",
-		"unknown"
-	].includes(q.certainty)) error("enum", `问题 ${q.id} 的分类或确定度不认识`);
-	const questionIds = plan.questions.some((q) => q?.reply?.changed?.length) ? questionElementIds(plan) : /* @__PURE__ */ new Set();
-	for (const q of plan.questions.filter(Boolean)) {
-		const status = questionStatus(q), warn = (message) => issues.push({
-			level: "warn",
-			code: "question-status",
-			message: `问题卡 ${q.id}：${message}`
-		});
-		if (status === "answered" && !q.answer?.trim()) warn("status 是 answered，但没有答复");
-		if (status === "answered" && q.reply) warn("status 是 answered，但还挂着 reply");
-		if (status === "resolved" && !q.reply) warn("status 是 resolved，但没有 reply");
-		if (q.reply?.outcome === "ask" && status !== "open") warn("reply.outcome 是 ask，但 status 不是 open");
-		for (const id of q.reply?.changed ?? []) if (!questionIds.has(id)) warn(`reply.changed 里的构件 ${id} 在方案里找不到`);
-	}
-	for (const c of plan.changes.filter(Boolean)) {
-		if (![
-			"add",
-			"remove",
-			"update"
-		].includes(c.op) || ![
-			"wall",
-			"opening",
-			"beam",
-			"room",
-			"column",
-			"shaft",
-			"stair",
-			"void"
-		].includes(c.type) || !["user", "agent"].includes(c.by) || !["pending", "confirmed"].includes(c.status)) error("enum", `改造 ${c.id} 的操作、类型、作者或状态不认识`);
-		if (c.op !== "add" && !c.target || c.op !== "remove" && (!c.data || typeof c.data !== "object")) error("change-params", `改造 ${c.id} 缺少目标或参数`);
-	}
-	if (plan.levelUnderlays && (typeof plan.levelUnderlays !== "object" || Array.isArray(plan.levelUnderlays))) error("underlay", "levelUnderlays 必须是按楼层 id 索引的对象");
-	for (const id of Object.keys(plan.levelUnderlays ?? {})) if (!levelIds.has(id)) error("level-reference", `底图楼层 ${id} 不存在`);
-	for (const u of [plan.underlay, ...Object.values(plan.levelUnderlays ?? {})].filter(Boolean)) {
-		if (!u || typeof u !== "object") {
-			error("underlay", "底图必须是对象");
-			continue;
-		}
-		const src = typeof u.src === "string" ? u.src.trim() : "";
-		if (/^(?:[a-z][a-z\d+.-]*:|[/\\]{2})/i.test(src) && !/^data:image\/(?:(?:png|jpe?g|webp|gif|bmp|avif);base64|svg\+xml(?:;charset=utf-8)?(?:;base64)?),.+$/i.test(src)) error("underlay-remote", "底图必须为本地相对路径或内嵌图片（含 SVG）data URL，禁止远程地址和外部协议");
-		if (!src || !finite$1(u.mmPerPx) || u.mmPerPx <= 0 || !point$1(u.origin) || !finite$1(u.opacity) || u.opacity < 0 || u.opacity > 100 || typeof u.visible !== "boolean" || u.mmPerPxY !== void 0 && (!finite$1(u.mmPerPxY) || u.mmPerPxY <= 0)) error("underlay", "底图路径、比例、原点或显示参数无效");
-	}
-	if (plan.decor !== void 0 && !issues.some((i) => i.level === "error")) for (const i of validatePlanDecor(plan)) issues.push({
-		level: i.level === "error" ? "error" : "warn",
-		code: "decor-" + i.code,
-		message: `${i.id}：${i.text}`
-	});
-	return issues;
-}
-// src/core/changes.ts
-var replayOrigins = /* @__PURE__ */ new WeakMap();
-var collection = {
-	wall: "walls",
-	opening: "openings",
-	beam: "beams",
-	room: "rooms",
-	column: "columns",
-	shaft: "shafts",
-	stair: "stairs",
-	void: "voids"
-};
-/** 某类构件的数组；可选集合（柱、管道井、楼梯、挑空）缺省时返回空数组（不写回方案） */
-function elements(plan, type) {
-	return plan[collection[type]] ?? [];
-}
-/** 可写的数组：可选集合缺省时在 plan 上建一个空数组 */
-function mutableElements(plan, type) {
-	const key = collection[type];
-	return plan[key] ??= [];
-}
-var allIds = (plan) => new Set([
-	...plan.walls,
-	...plan.openings,
-	...plan.beams,
-	...plan.rooms,
-	...plan.changes,
-	...plan.questions,
-	...plan.levels ?? [],
-	...plan.columns ?? [],
-	...plan.shafts ?? [],
-	...plan.stairs ?? [],
-	...plan.voids ?? []
-].map((x) => x.id));
-var finite = (v) => typeof v === "number" && Number.isFinite(v);
-var point = (v) => Array.isArray(v) && v.length === 2 && v.every(finite);
-function checkElement(plan, type, item) {
-	if (!item || typeof item.id !== "string" || !item.id) return "构件缺少有效 id";
-	if (item.level !== void 0 && !levelsOf(plan).some((l) => l.id === item.level)) return "楼层引用不存在";
-	if (type === "wall" || type === "beam") {
-		if (!point(item.a) || !point(item.b) || Math.hypot(item.b[0] - item.a[0], item.b[1] - item.a[1]) < 1e-7) return "端点缺失或长度为零";
-		if (!finite(type === "wall" ? item.thickness : item.width) || (type === "wall" ? item.thickness : item.width) <= 0) return "厚度或宽度必须为正数";
-		if (type === "wall" && ![
-			"exterior",
-			"bearing",
-			"partition",
-			"glass",
-			"half",
-			"half-glass"
-		].includes(item.kind)) return "墙类型不认识";
-		if (type === "wall" && (item.height !== void 0 && (!finite(item.height) || item.height <= 0) || item.bulge !== void 0 && !finite(item.bulge) || item.lowHeight !== void 0 && (!finite(item.lowHeight) || item.lowHeight < 0))) return "墙高或矢高无效";
-		if (type === "beam" && (!finite(item.bottom) || item.bottom < 0)) return "梁底高度无效";
-	}
-	if (type === "room") {
-		if (typeof item.name !== "string" || !Array.isArray(item.poly) || item.poly.length < 3 || !item.poly.every(point)) return "房间需要名称和至少三个有效顶点";
-		if (item.ceiling !== void 0 && (!finite(item.ceiling) || item.ceiling <= 0) || item.floorOffset !== void 0 && !finite(item.floorOffset)) return "房间高度无效";
-	}
-	if (type === "opening") {
-		const w = plan.walls.find((w) => w.id === item.wall);
-		if (!w) return `宿主墙 ${item.wall ?? ""} 不存在`;
-		if (![
-			"door",
-			"sliding",
-			"doorway",
-			"window",
-			"floor-window",
-			"bay-window",
-			"open-balcony"
-		].includes(item.kind)) return "洞口类型不认识";
-		if (![
-			item.offset,
-			item.width,
-			item.sill,
-			item.head
-		].every(finite) || item.width <= 0 || item.offset < 0 || item.offset + item.width > wallLength(w) + 1e-6) return "洞口尺寸缺失或超出墙长";
-		if (item.sill < 0 || item.head <= item.sill || item.head > effectiveWallHeight(plan, w) + 1e-7) return "洞底、洞顶与墙高不相容";
-		if (plan.openings.some((o) => o.id !== item.id && o.wall === item.wall && Math.min(o.offset + o.width, item.offset + item.width) - Math.max(o.offset, item.offset) > 1e-6)) return "同墙洞口重叠";
-		if (item.panes && (!Array.isArray(item.panes) || !item.panes.length || item.panes.some((p) => !finite(p.width) || p.width <= 0 || ![
-			"fixed",
-			"casement",
-			"sliding"
-		].includes(p.kind)))) return "窗分扇无效";
-		if (item.swing && (!["start", "end"].includes(item.swing.hinge) || ![1, -1].includes(item.swing.side))) return "门开向无效";
-	}
-	const poly = (v) => Array.isArray(v) && v.length >= 3 && v.every(point) && !invalidPolygon(v);
-	if (type === "column") {
-		if (!point(item.center) || !point(item.size) || item.size.some((v) => v <= 0)) return "柱的位置或尺寸无效";
-		if (!["rect", "round"].includes(item.shape) || !["bearing", "decorative"].includes(item.kind)) return "柱的形状或类型不认识";
-		if (item.shape === "round" && item.size[0] !== item.size[1]) return "圆柱的两个尺寸必须相等";
-		if (item.rotation !== void 0 && !finite(item.rotation)) return "柱的旋转角无效";
-	}
-	if (type === "shaft") {
-		if (!poly(item.poly)) return "管道井需要至少三个不自交的顶点";
-		if (![
-			"flue",
-			"pipe",
-			"vent",
-			"other"
-		].includes(item.kind)) return "管道井类型不认识";
-	}
-	if (type === "void") {
-		if (!levelsOf(plan).some((l) => l.id === item.level)) return "挑空必须指定有效楼层";
-		if (!poly(item.poly)) return "挑空需要至少三个不自交的顶点";
-	}
-	if (type === "stair") {
-		const levels = levelsOf(plan), from = levels.find((l) => l.id === item.level), to = levels.find((l) => l.id === item.to);
-		if (!from || !to || from.id === to.id) return "楼梯的起止楼层必须存在且不同";
-		if (to.elevation <= from.elevation) return "楼梯要通到更高的一层";
-		if (!poly(item.poly)) return "楼梯占地需要至少三个不自交的顶点";
-		if (!Array.isArray(item.path) || item.path.length < 2 || !item.path.every(point) || item.path.slice(1).some((p, i) => p[0] === item.path[i][0] && p[1] === item.path[i][1])) return "楼梯上行路径需要至少两个不重合的点";
-		if (!finite(item.width) || item.width <= 0 || item.steps !== void 0 && (!Number.isInteger(item.steps) || item.steps <= 0)) return "楼梯宽度或踏步数无效";
-		if (![
-			"straight",
-			"L",
-			"U",
-			"spiral"
-		].includes(item.kind)) return "楼梯类型不认识";
-	}
-}
-function applyChanges(base, changes) {
-	let plan = structuredClone(base);
-	const results = [], protectedIds = new Set(base.walls.filter((w) => PROTECTED_KINDS.includes(w.kind) || w.evidence?.certainty === "unknown").map((w) => w.id));
-	const isProtected = (w) => !!w && (protectedIds.has(w.id) || PROTECTED_KINDS.includes(w.kind));
-	const bearingColumns = new Set((base.columns ?? []).filter((c) => c.kind === "bearing").map((c) => c.id));
-	for (const change of changes) {
-		const r = {
-			id: change.id,
-			ok: false,
-			affected: [],
-			removed: []
-		}, next = structuredClone(plan);
-		try {
-			const blocked = change.op === "remove" ? shaftRemovalError(next, change.target) : void 0;
-			if (blocked) throw new Error(blocked);
-			if (!collection[change.type] || ![
-				"add",
-				"remove",
-				"update"
-			].includes(change.op)) throw new Error("改造操作或构件类型不认识");
-			if (!["user", "agent"].includes(change.by) || !["pending", "confirmed"].includes(change.status)) throw new Error("改造作者或状态无效");
-			const list = mutableElements(next, change.type), old = list.find((x) => x.id === change.target);
-			if (change.op !== "add" && !old) throw new Error(`目标 ${change.target ?? "（未指定）"} 不存在`);
-			if (change.op !== "remove" && (!change.data || typeof change.data !== "object" || Array.isArray(change.data))) throw new Error("缺少 data 参数");
-			if (change.op === "update" && change.data.id !== void 0 && change.data.id !== change.target) throw new Error("更新不能修改构件 id");
-			const item = change.op === "add" ? structuredClone(change.data) : change.op === "update" ? {
-				...old,
-				...structuredClone(change.data)
-			} : old;
-			let protectedWall;
-			if (change.type === "wall" && change.op !== "add") {
-				const before = old, after = item;
-				const moved = (a, b) => JSON.stringify(a) !== JSON.stringify(b);
-				if (change.op === "remove" || moved(before.a, after.a) || moved(before.b, after.b) || (before.bulge ?? 0) !== (after.bulge ?? 0) || (before.level ?? levelsOf(next)[0].id) !== (after.level ?? levelsOf(next)[0].id) || after.thickness < before.thickness || effectiveWallHeight(next, after) < effectiveWallHeight(next, before) || (after.lowHeight ?? 1) < (before.lowHeight ?? 1) || after.kind !== before.kind) protectedWall = before;
-			}
-			if (change.type === "opening" && change.op !== "remove") {
-				const o = item, prev = old;
-				if (!prev || o.wall !== prev.wall || o.offset !== prev.offset || o.width > prev.width || o.sill < prev.sill || o.head > prev.head) protectedWall = next.walls.find((w) => w.id === o.wall);
-			}
-			const beforeColumn = old, afterColumn = item;
-			const protectedColumn = change.type === "column" && change.op !== "add" && (bearingColumns.has(old.id) || beforeColumn?.kind === "bearing") && (change.op === "remove" || JSON.stringify(beforeColumn.center) !== JSON.stringify(afterColumn.center) || afterColumn.size?.some((v, i) => v < beforeColumn.size[i]) || afterColumn.kind !== beforeColumn.kind || afterColumn.shape !== beforeColumn.shape || (afterColumn.rotation ?? 0) !== (beforeColumn.rotation ?? 0) || (afterColumn.level ?? levelsOf(next)[0].id) !== (beforeColumn.level ?? levelsOf(next)[0].id));
-			if ((isProtected(protectedWall) || protectedColumn) && !(change.confirm && typeof change.confirm.by === "string" && change.confirm.by.trim())) {
-				r.needsConfirm = true;
-				r.error = protectedColumn ? "削减、移动或拆除承重柱需要用户二次确认" : "削减、移动、改类型、拆除或开洞承重墙、外墙、承重情况不确定的墙需要用户二次确认";
-				results.push(r);
-				continue;
-			}
-			if (change.op === "add") {
-				const error = checkElement(next, change.type, item);
-				if (error) throw new Error(error);
-				if (allIds(next).has(item.id)) throw new Error(`id ${item.id} 已存在`);
-				list.push(item);
-				r.affected.push(item.id);
-			} else if (change.op === "update") {
-				const error = checkElement(next, change.type, item);
-				if (error) throw new Error(error);
-				list[list.indexOf(old)] = item;
-				r.affected.push(old.id);
-				if (change.type === "wall") {
-					const openings = next.openings.filter((o) => o.wall === old.id).sort((a, b) => a.offset - b.offset || a.id.localeCompare(b.id));
-					if (Object.hasOwn(change.data, "bulge")) {
-						const length = wallLength(item);
-						if (openings.length === 1 && openings[0].width > length) {
-							openings[0].width = length;
-							(r.warnings ??= []).push(`洞口 ${openings[0].id} 宽度超过新墙长，已缩至 ${length.toFixed(1)}mm`);
-						}
-						if (openings.reduce((sum, o) => sum + o.width, 0) > length + 1e-6) throw new Error("新墙长不足以容纳所有洞口，未修改墙和洞口");
-						let end = length;
-						for (const o of [...openings].reverse()) {
-							const offset = Math.max(0, Math.min(o.offset, end - o.width));
-							if (Math.abs(offset - o.offset) > 1e-7 || openings.length === 1 && o.width !== plan.openings.find((p) => p.id === o.id)?.width) {
-								if (offset !== o.offset) (r.warnings ??= []).push(`洞口 ${o.id} 超出新墙长或与夹回洞口相遇，offset 已从 ${o.offset.toFixed(1)} 夹至 ${offset.toFixed(1)}mm`);
-								o.offset = offset;
-								r.affected.push(o.id);
-							}
-							end = offset;
-						}
-					}
-					for (const o of openings) {
-						const err = checkElement(next, "opening", o);
-						if (err) throw new Error(`墙更新导致洞口 ${o.id} 无效：${err}`);
-					}
-				}
-			} else if (change.type === "wall") {
-				const wall = old, len = wallLength(wall), range = change.range ?? [0, len], [from, to] = range;
-				if (range.length !== 2 || !range.every(finite) || from < 0 || to > len + 1e-6 || to <= from) throw new Error("拆除区间必须在墙长范围内，且起点小于终点");
-				const intervals = [];
-				if (from > 1e-6) intervals.push([0, from]);
-				if (to < len - 1e-6) intervals.push([to, len]);
-				const segments = intervals.map(([a, b], i) => ({
-					...sliceWall(wall, a, b),
-					id: i ? `${wall.id}~${change.id}` : wall.id
-				}));
-				if (segments[1] && allIds(next).has(segments[1].id)) throw new Error(`分段 id ${segments[1].id} 已存在`);
-				next.walls.splice(next.walls.indexOf(wall), 1, ...segments);
-				next.openings = next.openings.filter((o) => {
-					if (o.wall !== wall.id) return true;
-					const i = intervals.findIndex(([a, b]) => o.offset >= a - 1e-6 && o.offset + o.width <= b + 1e-6);
-					if (i < 0) {
-						r.removed.push(o.id);
-						return false;
-					}
-					o.wall = segments[i].id;
-					o.offset -= intervals[i][0];
-					r.affected.push(o.id);
-					return true;
-				});
-				r.affected.push(...segments.map((s) => s.id));
-				if (!segments.length) r.removed.push(wall.id);
-				if (isProtected(wall)) segments.forEach((s) => protectedIds.add(s.id));
-			} else {
-				list.splice(list.indexOf(old), 1);
-				r.removed.push(old.id);
-			}
-			for (const w of next.walls) if (PROTECTED_KINDS.includes(w.kind)) protectedIds.add(w.id);
-			for (const c of next.columns ?? []) if (c.kind === "bearing") bearingColumns.add(c.id);
-			r.ok = true;
-			plan = next;
-		} catch (error) {
-			r.error = error instanceof Error ? error.message : String(error);
-			r.affected = [];
-			r.removed = [];
-			delete r.warnings;
-		}
-		results.push(r);
-	}
-	if (changes.length && changes.every((c) => base.changes.some((saved) => saved.id === c.id)) && results.some((r) => r.ok)) {
-		const frame = mirrorBounds(base);
-		if (frame) {
-			plan.legacy ??= {};
-			plan.legacy.__structureReplayFrame = frame;
-		}
-	}
-	replayOrigins.set(plan, {
-		base: replayOrigins.get(base)?.base ?? base,
-		protectedWalls: protectedIds,
-		bearingColumns
-	});
-	return {
-		plan,
-		results
-	};
-}
-/** Validate the final replay once; attach contributing change IDs to each diagnostic. */
-function validateReplay(replay, changes, base) {
-	const issues = validatePlan(replay.plan);
-	const introduced = /* @__PURE__ */ new Map();
-	const key = (issue) => JSON.stringify([
-		issue.code,
-		issue.ref,
-		issue.message
-	]);
-	if (base && issues.some((i) => i.level === "error")) {
-		let previous = new Set(validatePlan(base).filter((i) => i.level === "error").map(key));
-		for (let i = 0; i < changes.length; i++) {
-			const current = new Set(validatePlan(applyChanges(base, changes.slice(0, i + 1)).plan).filter((i) => i.level === "error").map(key));
-			for (const id of current) if (!previous.has(id)) introduced.set(id, changes[i].id);
-			for (const id of previous) if (!current.has(id)) introduced.delete(id);
-			previous = current;
-		}
-	}
-	return issues.map((issue) => {
-		const related = replay.results.filter((r) => r.ok && (!issue.ref || [...r.affected, ...r.removed].includes(issue.ref.id)));
-		const cause = introduced.get(key(issue));
-		const changeIds = cause ? [cause] : (related.length ? related : replay.results.filter((r) => r.ok)).map((r) => r.id);
-		return {
-			...issue,
-			changeIds,
-			message: `${issue.message}${changeIds.length ? `（改造 ${changeIds.join("、")}；${changes.filter((c) => changeIds.includes(c.id)).map((c) => `${c.type}:${c.target ?? c.data?.id ?? ""}`).join("、")}）` : ""}`
-		};
-	});
-}
-// src/core/decor/resolve.ts
-var decorItems = (d) => [
-	...d.surfaces,
-	...d.furniture,
-	...d.cabinets,
-	...d.panels,
-	...d.recesses
-];
-function itemSpan(plan, item) {
-	if ("span" in item || "thickness" in item) return panelSpan(plan, item);
-	if ("place" in item) return "face" in item.place ? {
-		face: item.place.face,
-		s: [item.place.s, item.place.s + item.width],
-		z: item.z
-	} : void 0;
-	if ("host" in item) return "face" in item.host && item.rect.s ? {
-		face: item.host.face,
-		s: item.rect.s,
-		z: item.rect.z
-	} : void 0;
-	if ("target" in item && "face" in item.target) {
-		const a = faceAxis(plan, item.target.face);
-		return {
-			face: item.target.face,
-			s: item.target.s ?? [0, a.length],
-			z: item.target.z ?? [0, plan.ceiling]
-		};
-	}
-	if ("against" in item && item.against) {
-		const a = faceAxis(plan, item.against.face), values = furnitureFootprint(item, plan).map((p) => dot$2(sub$1(p, a.wall.a), wallDir(a.wall)));
-		return {
-			face: item.against.face,
-			s: [Math.min(...values), Math.max(...values)],
-			z: [item.z ?? 0, (item.z ?? 0) + item.height]
-		};
-	}
-}
-/** Local horizontal u and outward depth to plan coordinates; recesses use the host's left origin. */
-function hostTransform(plan, decor, id) {
-	const panel = decor.panels.find((p) => p.id === id);
-	if (panel) return panelTransform(plan, panel);
-	const cabinet = decor.cabinets.find((c) => c.id === id);
-	if (cabinet) return cabinetTransform(plan, cabinet);
-	const recess = decor.recesses.find((r) => r.id === id);
-	if (!recess) return void 0;
-	if ("face" in recess.host && recess.rect.s) {
-		const a = faceAxis(plan, recess.host.face), start = Math.min(...recess.rect.s.map(a.toU));
-		return (u, d) => a.at(a.toS(start + u), d);
-	}
-	const parent = "panel" in recess.host ? panelTransform(plan, decor.panels.find((p) => p.id === recess.host.panel)) : "cabinet" in recess.host ? cabinetTransform(plan, decor.cabinets.find((c) => c.id === recess.host.cabinet)) : void 0;
-	return parent && ((u, d) => parent(u + (recess.rect.u?.[0] ?? 0), d));
-}
-function itemFootprint(plan, decor, item) {
-	if ("size" in item) return furniturePose({
-		...plan,
-		decor
-	}, item).footprint;
-	if ("place" in item) return cabinetFootprint(plan, item);
-	if ("thickness" in item) {
-		const g = panelSpan(plan, item), at = panelTransform(plan, item), width = g.s[1] - g.s[0];
-		return [
-			at(0, 0),
-			at(width, 0),
-			at(width, item.type === "slats" ? item.slats?.depth ?? item.thickness : item.thickness),
-			at(0, item.type === "slats" ? item.slats?.depth ?? item.thickness : item.thickness)
-		];
-	}
-	if ("host" in item) {
-		const at = hostTransform(plan, decor, item.id);
-		if (!at) return [];
-		const width = item.rect.u ? item.rect.u[1] - item.rect.u[0] : item.rect.s ? item.rect.s[1] - item.rect.s[0] : 0;
-		const host = "panel" in item.host ? decor.panels.find((p) => p.id === item.host.panel) : "cabinet" in item.host ? decor.cabinets.find((c) => c.id === item.host.cabinet) : void 0;
-		const thick = host ? "thickness" in host ? host.type === "slats" ? host.slats?.depth ?? host.thickness : host.thickness : host.depth : 0, dep = item.depth === "through" ? thick : item.depth;
-		return [
-			at(0, thick),
-			at(width, thick),
-			at(width, thick - dep),
-			at(0, thick - dep)
-		];
-	}
-	if (!("target" in item)) return [];
-	if ("floor" in item.target || "ceiling" in item.target) return plan.rooms.find((r) => r.id === ("floor" in item.target ? item.target.floor : "ceiling" in item.target ? item.target.ceiling : ""))?.poly ?? [];
-	const a = faceAxis(plan, item.target.face), s = item.target.s ?? [0, a.length];
-	return [
-		a.at(s[0]),
-		a.at(s[1]),
-		a.at(s[1], 1),
-		a.at(s[0], 1)
-	];
-}
-function resolveDecor(plan, afterOrDecor) {
-	const after = afterOrDecor && "walls" in afterOrDecor ? afterOrDecor : plan, source = afterOrDecor && !("walls" in afterOrDecor) ? afterOrDecor : plan.decor;
-	if (!source) return {
-		placed: [],
-		items: [],
-		issues: []
-	};
-	const decor = structuredClone(source), items = decorItems(decor), issues = [], moved = /* @__PURE__ */ new Set(), missing = /* @__PURE__ */ new Set();
-	const problem = (id, code, text) => {
-		issues.push({
-			id,
-			code,
-			level: "error",
-			text,
-			fix: [
-				"move",
-				"clip",
-				"keep",
-				"delete"
-			]
-		});
-		missing.add(id);
-	};
-	const remap = (id, sp) => {
-		const saved = source.cache?.[id]?.anchor;
-		const original = plan.walls.find((w) => w.id === sp.face.wall) ?? plan.walls.find((w) => sp.face.wall.startsWith(w.id + "~")) ?? after.walls.find((w) => sp.face.wall.startsWith(w.id + "~"));
-		const before = saved?.wall === sp.face.wall && original ? {
-			...original,
-			id: saved.wall,
-			a: saved.a,
-			b: saved.b
-		} : original?.id === sp.face.wall ? original : void 0;
-		const current = after.walls.find((w) => w.id === sp.face.wall);
-		const root = sp.face.wall.split("~")[0];
-		const split = before && current && wallLength(current) > wallLength(before) + 1e-5 && (saved || plan.changes.some((c) => c.op === "remove" && c.type === "wall" && c.target === root && c.range)) || sp.face.wall.includes("~") || after.walls.some((w) => w.id.startsWith(`${sp.face.wall}~`)) || after.changes.some((c) => c.type === "wall" && c.op === "remove" && c.target === sp.face.wall && c.range);
-		if (!before || !split || before.bulge) {
-			if (!current) {
-				problem(id, "host-missing", "宿主墙拆了，没地方挂了");
-				return;
-			}
-			return sp;
-		}
-		const dir = wallDir(before), candidates = after.walls.filter((w) => (w.id === root || w.id.startsWith(`${root}~`)) && !w.bulge && levelOf(after, w).id === levelOf(plan, before).id);
-		const match = candidates.find((w) => {
-			const ss = ordered(dot$2(sub$1(w.a, before.a), dir), dot$2(sub$1(w.b, before.a), dir));
-			return sp.s[0] >= ss[0] - 1e-5 && sp.s[1] <= ss[1] + 1e-5;
-		});
-		if (!match) {
-			problem(id, candidates.length ? "host-cut" : "host-missing", candidates.length ? "构件跨过拆掉的墙段，需裁到剩下的墙上或挪位置" : "宿主墙拆了，没地方挂了");
-			return;
-		}
-		const shift = dot$2(sub$1(match.a, before.a), dir), reversed = dot$2(wallDir(match), dir) < 0;
-		const s = ordered((sp.s[0] - shift) * (reversed ? -1 : 1), (sp.s[1] - shift) * (reversed ? -1 : 1)), face = {
-			wall: match.id,
-			side: reversed ? -sp.face.side : sp.face.side
-		};
-		if (face.wall !== sp.face.wall || s.some((v, i) => Math.abs(v - sp.s[i]) > 1e-7)) moved.add(id);
-		return {
-			...sp,
-			face,
-			s
-		};
-	};
-	for (const item of items) {
-		if ("in" in item && item.in) continue;
-		let sp;
-		try {
-			sp = itemSpan(plan, item);
-		} catch {
-			try {
-				sp = itemSpan(after, item);
-			} catch {
-				problem(item.id, "host-missing", "装修宿主不存在");
-				continue;
-			}
-		}
-		if (!sp) continue;
-		const next = remap(item.id, sp);
-		if (!next) {
-			if ("against" in item) {
-				delete item.against;
-				missing.delete(item.id);
-				const warning = issues.find((i) => i.id === item.id && i.code === "host-missing");
-				if (warning) warning.level = "info";
-			}
-			continue;
-		}
-		if ("thickness" in item) {
-			if (item.type !== "arch") item.span = next;
-			else if (item.span) item.span.face = next.face;
-		} else if ("place" in item && "face" in item.place) {
-			item.place.face = next.face;
-			item.place.s = next.s[0];
-		} else if ("host" in item && "face" in item.host) {
-			item.host.face = next.face;
-			item.rect.s = next.s;
-		} else if ("target" in item && "face" in item.target) {
-			item.target.face = next.face;
-			if (item.target.s) item.target.s = next.s;
-		} else if ("at" in item && item.against) {
-			item.against.face = next.face;
-			const a = faceAxis(after, next.face), old = source.furniture.find((f) => f.id === item.id), theta = Math.atan2(a.normal[1], a.normal[0]) * 180 / Math.PI - 90;
-			if (after !== plan && JSON.stringify(plan.walls.find((w) => w.id === sp.face.wall)) !== JSON.stringify(a.wall)) {
-				item.rot = theta;
-				item.at = a.at((next.s[0] + next.s[1]) / 2, item.against.gap + item.size[1] / 2 - (item.embed ?? 0));
-			} else item.at = [...old.at];
-		}
-	}
-	for (const r of decor.recesses) if (!("face" in r.host)) {
-		const id = "panel" in r.host ? r.host.panel : r.host.cabinet;
-		if (missing.has(id)) problem(r.id, "host-missing", `宿主 ${id} 没地方挂了`);
-		else if (moved.has(id)) moved.add(r.id);
-	}
-	for (const f of decor.furniture) if (f.in) {
-		const parent = f.in.split(":cell:")[0];
-		if (moved.has(parent)) moved.add(f.id);
-		if (missing.has(parent) || furniturePose({
-			...after,
-			decor
-		}, f).missing) problem(f.id, "host-missing", "家具的宿主链不存在");
-	}
-	const resolvedPlan = {
-		...after,
-		decor
-	};
-	issues.push(...validateDecorRaw(resolvedPlan, decor, plan));
-	for (const i of issues) if (i.code === "host-cut" && after !== plan) {
-		const item = items.find((x) => x.id === i.id);
-		try {
-			const sp = item && itemSpan(plan, item), before = plan.walls.find((w) => w.id === sp?.face.wall), current = after.walls.find((w) => w.id === sp?.face.wall);
-			if (sp && before && current && faceRun(plan, sp.face).length === 1 && wallLength(current) < wallLength(before) && !after.changes.some((c) => c.type === "wall" && c.op === "remove" && c.target === before.id && c.range)) {
-				i.code = "out-of-face";
-				i.text = "墙变短了，构件保持原 s 后超出墙面";
-			}
-		} catch {}
-	}
-	for (const i of [...issues]) {
-		if ([
-			"host-missing",
-			"host-cut",
-			"out-of-face",
-			"arc-unsupported",
-			"room-missing"
-		].includes(i.code) && (i.level === "error" || i.code === "room-missing")) missing.add(i.id);
-		if (i.code === "through-wall" && after !== plan) {
-			const sp = (() => {
-				try {
-					return itemSpan(after, items.find((x) => x.id === i.id));
-				} catch {
-					return;
-				}
-			})(), oldWall = plan.walls.find((w) => w.id === sp?.face.wall), newWall = after.walls.find((w) => w.id === sp?.face.wall);
-			if (oldWall && newWall && newWall.thickness < oldWall.thickness) issues.push({
-				...i,
-				code: "too-deep",
-				text: `墙变薄了。${i.text}`
-			});
-		}
-	}
-	for (const r of decor.recesses) if (!("face" in r.host)) {
-		const parent = "panel" in r.host ? r.host.panel : r.host.cabinet;
-		if (missing.has(parent) && !missing.has(r.id)) problem(r.id, "host-missing", `宿主 ${parent} 没地方挂了`);
-	}
-	for (const f of decor.furniture) if (f.in && missing.has(f.in.split(":cell:")[0]) && !missing.has(f.id)) problem(f.id, "host-missing", "家具的宿主链不存在");
-	const placed = items.map((item) => {
-		let footprint = [], face, level = levelOf(after, "level" in item ? item : {}).id;
-		try {
-			const sp = itemSpan(after, item);
-			if (sp) {
-				const wholeSurface = "target" in item && "face" in item.target && !item.target.s && !item.target.z;
-				const f = faceFrame(after, wholeSurface ? sp.face : sp);
-				face = {
-					a: f.a,
-					b: f.b,
-					side: sp.face.side
-				};
-				level = levelOf(after, f.wall).id;
-			}
-			if (!missing.has(item.id)) footprint = itemFootprint(resolvedPlan, decor, item);
-		} catch {
-			missing.add(item.id);
-		}
-		if (missing.has(item.id)) {
-			const c = decor.cache?.[item.id];
-			if (c) {
-				const [x0, y0, x1, y1] = c.box;
-				footprint = "size" in item && c.pose ? furniturePose(resolvedPlan, item).footprint : [
-					[x0, y0],
-					[x1, y0],
-					[x1, y1],
-					[x0, y1]
-				];
-				level = c.level ?? level;
-			} else try {
-				footprint = itemFootprint(plan, source, decorItems(source).find((x) => x.id === item.id));
-			} catch {}
-		}
-		const status = missing.has(item.id) ? "missing" : moved.has(item.id) ? "moved" : "placed";
-		return {
-			id: item.id,
-			status,
-			reasons: [...new Set(issues.filter((i) => i.id === item.id).map((i) => i.text))],
-			text: status === "missing" ? "没地方挂了" : status === "moved" ? "挪到剩下那段" : "挂得上",
+		result.leaves.push({
+			index,
+			kind: pane.kind,
+			s: [from, to],
+			path,
 			footprint,
-			...face ? { face } : {},
-			level,
-			item
-		};
+			...hinge ? { hinge } : {}
+		});
+		if (index < panes.length - 1) result.divisions.push(divider(to));
+		from = to;
 	});
-	const byId = new Map(placed.map((p) => [p.id, p]));
-	for (const p of placed) if ("host" in p.item && !("face" in p.item.host)) {
-		const parent = byId.get("panel" in p.item.host ? p.item.host.panel : p.item.host.cabinet);
-		if (parent) p.level = parent.level;
-	}
-	for (const p of placed) if ("in" in p.item && p.item.in) {
-		const parent = byId.get(p.item.in.split(":cell:")[0]);
-		if (parent) p.level = parent.level;
-	}
-	return {
-		decor,
-		placed,
-		items: placed,
-		issues: issues.filter((i, n) => issues.findIndex((j) => j.id === i.id && j.code === i.code) === n)
-	};
-}
-/** Resolve by the actual span/footprint, then host; never select an unrelated floor. */
-function decorRoom(plan, item, visited = /* @__PURE__ */ new Set()) {
-	if (visited.has(item.id)) return void 0;
-	visited.add(item.id);
-	if ("target" in item && "floor" in item.target) return item.target.floor;
-	if ("target" in item && "ceiling" in item.target) return item.target.ceiling;
-	if (plan.decor) {
-		const host = "in" in item ? item.in?.split(":cell:")[0] : "host" in item ? "panel" in item.host ? item.host.panel : "cabinet" in item.host ? item.host.cabinet : void 0 : void 0;
-		const parent = host && decorItems(plan.decor).find((i) => i.id === host);
-		if (parent) return decorRoom(plan, parent, visited);
-	}
-	try {
-		const span = itemSpan(plan, item);
-		if (span) {
-			const axis = faceAxis(plan, span.face), mid = (span.s[0] + span.s[1]) / 2;
-			const room = plan.rooms.find((r) => levelOf(plan, r).id === levelOf(plan, axis.wall).id && pointInPolygon(axis.at(mid, 1), r.poly));
-			if (room) return room.id;
-			const neighbors = roomsBesideWall(plan, axis.wall.id)[span.face.side === 1 ? "positive" : "negative"];
-			if (neighbors.length === 1) return neighbors[0].id;
-		}
-		if (plan.decor) {
-			const fp = itemFootprint(plan, plan.decor, item), box = bounds(fp), center = [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2];
-			const level = "size" in item ? furniturePose(plan, item).level : levelOf(plan, "level" in item ? { level: item.level } : {}).id;
-			return fp.length ? plan.rooms.find((r) => levelOf(plan, r).id === level && pointInPolygon(center, r.poly))?.id : void 0;
-		}
-	} catch {}
-}
-/** Persistable reattachment, including last valid ghost geometry. */
-function rehostDecor(before, after, decor) {
-	const resolved = resolveDecor({
-		...before,
-		decor
-	}, after), result = resolved.decor;
-	result.cache ??= {};
-	for (const p of resolved.placed) if (p.status !== "missing" && p.footprint.length) {
-		const span = itemSpan({
-			...after,
-			decor: result
-		}, p.item), wall = after.walls.find((w) => w.id === span?.face.wall);
-		const pose = "size" in p.item ? furniturePose({
-			...after,
-			decor: result
-		}, p.item) : void 0;
-		result.cache[p.id] = {
-			level: p.level,
-			box: bounds(p.footprint),
-			...p.face ? { face: [p.face.a, p.face.b] } : {},
-			...wall ? { anchor: {
-				wall: wall.id,
-				a: [...wall.a],
-				b: [...wall.b]
-			} } : {},
-			...pose ? { pose: {
-				at: pose.at,
-				rot: pose.rot,
-				z: pose.z
-			} } : {}
-		};
-	}
-	for (const p of resolved.placed) if (p.status === "missing" && !result.cache[p.id]) try {
-		const original = decorItems(decor).find((i) => i.id === p.id), footprint = itemFootprint({
-			...before,
-			decor
-		}, decor, original);
-		if (!footprint.length) continue;
-		const pose = "size" in original ? furniturePose({
-			...before,
-			decor
-		}, original) : void 0;
-		result.cache[p.id] = {
-			level: pose?.level ?? p.level,
-			box: bounds(footprint),
-			...pose && !pose.missing ? { pose: {
-				at: pose.at,
-				rot: pose.rot,
-				z: pose.z
-			} } : {}
-		};
-	} catch {}
 	return result;
 }
-function decorStatus(plan) {
-	return resolveDecor(plan, plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan);
+// src/core/solids.ts
+function unionPolygons(polys) {
+	return polys.length ? index.union(polys[0], ...polys.slice(1)) : [];
+}
+function buildLevelSolids(plan, filter = () => true) {
+	const pieces = [], result = [];
+	const push = (kind, poly, z0, z1, ids, wallKind) => {
+		if (z1 - z0 > 1e-8 && poly.length >= 3) pieces.push({
+			kind,
+			polygons: [[poly]],
+			z0,
+			z1,
+			ids,
+			...wallKind ? { wallKind } : {}
+		});
+	};
+	for (const w of plan.walls.filter(filter)) {
+		const len = wallLength(w), height = effectiveWallHeight(plan, w), low = Math.min(w.lowHeight ?? DEFAULTS.lowHeight, height);
+		if (len <= 1e-7 || w.thickness <= 0 || height <= 0) continue;
+		const openings = plan.openings.filter((o) => o.wall === w.id), cuts = [.../* @__PURE__ */ new Set([
+			0,
+			len,
+			...openings.flatMap((o) => [Math.max(0, Math.min(len, o.offset)), Math.max(0, Math.min(len, o.offset + o.width))])
+		])].sort((a, b) => a - b);
+		for (let i = 1; i < cuts.length; i++) {
+			const a = cuts[i - 1], b = cuts[i], middle = (a + b) / 2, holes = openings.filter((o) => o.offset < middle && o.offset + o.width > middle), polygons = joinedWallFootprint(plan, w, a, b);
+			const zs = [.../* @__PURE__ */ new Set([
+				0,
+				height,
+				...w.kind === "half" || w.kind === "half-glass" ? [low] : [],
+				...holes.flatMap((o) => [Math.max(0, Math.min(height, o.sill)), Math.max(0, Math.min(height, o.head))])
+			])].sort((a, b) => a - b);
+			for (let j = 1; j < zs.length; j++) {
+				const z0 = zs[j - 1], z1 = zs[j], z = (z0 + z1) / 2;
+				if (holes.some((o) => z > o.sill && z < o.head) || w.kind === "half" && z > low) continue;
+				const kind = w.kind === "glass" || w.kind === "half-glass" && z >= low ? "glass" : holes.length ? holes.every((o) => z >= o.head) ? "lintel" : "sill" : "wall";
+				if (z1 - z0 > 1e-8 && polygons.length) pieces.push({
+					kind,
+					polygons,
+					z0,
+					z1,
+					ids: [w.id, ...holes.map((o) => o.id)],
+					wallKind: w.kind
+				});
+			}
+		}
+	}
+	for (const b of plan.beams) {
+		const d = [b.b[0] - b.a[0], b.b[1] - b.a[1]], ts = [0, 1];
+		const cross = (a, b) => a[0] * b[1] - a[1] * b[0];
+		for (const r of plan.rooms.filter((r) => levelOf(plan, r).id === levelOf(plan, b).id)) r.poly.forEach((a, i) => {
+			const q = r.poly[(i + 1) % r.poly.length], e = [q[0] - a[0], q[1] - a[1]], v = [a[0] - b.a[0], a[1] - b.a[1]], det = cross(d, e);
+			if (Math.abs(det) > 1e-8) {
+				const t = cross(v, e) / det, u = cross(v, d) / det;
+				if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
+			}
+		});
+		const cuts = [...new Set(ts)].sort((a, b) => a - b);
+		for (let i = 1; i < cuts.length; i++) push("beam", beamFootprint({
+			...b,
+			a: add(b.a, mul(d, cuts[i - 1])),
+			b: add(b.a, mul(d, cuts[i]))
+		}), b.bottom, ceilingAt(plan, add(b.a, mul(d, (cuts[i - 1] + cuts[i]) / 2)), levelOf(plan, b).id), [b.id]);
+	}
+	const priority = {
+		wall: 0,
+		sill: 1,
+		lintel: 2,
+		beam: 3,
+		glass: 4,
+		floor: 5,
+		platform: 6,
+		slab: 7,
+		stair: 8,
+		column: 9,
+		shaft: 10
+	};
+	pieces.sort((a, b) => priority[a.kind] - priority[b.kind] || (a.wallKind ?? "").localeCompare(b.wallKind ?? ""));
+	const occupied = [];
+	for (const piece of pieces) {
+		let cells = [piece];
+		for (const blocker of occupied) {
+			cells = cells.flatMap((cell) => {
+				const z0 = Math.max(cell.z0, blocker.z0), z1 = Math.min(cell.z1, blocker.z1);
+				if (z1 - z0 <= 1e-8) return [cell];
+				const inside = index.intersection(cell.polygons, blocker.polygons);
+				if (!inside.length) return [cell];
+				const outside = index.difference(cell.polygons, blocker.polygons);
+				const rest = [];
+				if (outside.length) rest.push({
+					...cell,
+					polygons: outside
+				});
+				if (z0 > cell.z0 + 1e-8) rest.push({
+					...cell,
+					polygons: inside,
+					z1: z0
+				});
+				if (z1 < cell.z1 - 1e-8) rest.push({
+					...cell,
+					polygons: inside,
+					z0: z1
+				});
+				return rest;
+			});
+			if (!cells.length) break;
+		}
+		const bands = /* @__PURE__ */ new Map();
+		for (const cell of cells) {
+			const key = `${cell.z0}:${cell.z1}`, prev = bands.get(key);
+			bands.set(key, prev ? {
+				...prev,
+				polygons: unionPolygons([...prev.polygons, ...cell.polygons])
+			} : cell);
+		}
+		result.push(...bands.values());
+		occupied.push(piece);
+	}
+	for (const r of plan.rooms) if (r.poly.length >= 3) {
+		result.push({
+			kind: "floor",
+			polygons: [[r.poly]],
+			z0: Math.min(0, r.floorOffset ?? 0) - .08,
+			z1: Math.min(0, r.floorOffset ?? 0),
+			ids: [r.id]
+		});
+		if ((r.floorOffset ?? 0) > 0) result.push({
+			kind: "platform",
+			polygons: [[r.poly]],
+			z0: 0,
+			z1: r.floorOffset,
+			ids: [r.id]
+		});
+	}
+	return result;
+}
+/** Generate each level independently, then translate local heights to absolute elevations. */
+function buildSolids(plan, filter = () => true) {
+	if (!hasLevelData(plan)) return buildLevelSolids(plan, filter);
+	return levelsOf(plan).flatMap((level, index$1) => {
+		const view = onLevel(plan, level.id), holes = (view.voids ?? []).map((v) => [v.poly]);
+		const cut = (polys) => holes.length && polys.length ? index.difference(polys, ...holes) : polys;
+		const solids = buildLevelSolids(view, filter).map((s) => {
+			if (s.kind === "floor" || s.kind === "platform") s = {
+				...s,
+				polygons: cut(s.polygons)
+			};
+			if (index$1 > 0 && s.kind === "floor") s = {
+				...s,
+				kind: "slab",
+				z0: s.z1 - .12
+			};
+			return {
+				...s,
+				level: level.id,
+				z0: s.z0 + level.elevation,
+				z1: s.z1 + level.elevation
+			};
+		}).filter((s) => s.polygons.length);
+		if (index$1 > 0) {
+			let polys = wallFootprints(view);
+			const rooms = view.rooms.filter((r) => r.poly.length >= 3).map((r) => [r.poly]);
+			if (polys.length && rooms.length) polys = index.difference(polys, ...rooms);
+			polys = cut(polys);
+			if (polys.length) solids.push({
+				kind: "slab",
+				polygons: polys,
+				z0: level.elevation - .12,
+				z1: level.elevation,
+				ids: view.walls.map((w) => w.id),
+				level: level.id
+			});
+		}
+		for (const c of view.columns ?? []) solids.push({
+			kind: "column",
+			polygons: [[columnFootprint(c)]],
+			z0: level.elevation,
+			z1: level.elevation + levelCeiling(plan, level.id),
+			ids: [c.id],
+			level: level.id
+		});
+		for (const shaft of view.shafts ?? []) if (shaft.poly.length >= 3) solids.push({
+			kind: "shaft",
+			polygons: [[shaft.poly]],
+			z0: level.elevation,
+			z1: level.elevation + levelCeiling(plan, level.id),
+			ids: [shaft.id],
+			level: level.id
+		});
+		for (const stair of view.stairs ?? []) {
+			const target = levelsOf(plan).find((l) => l.id === stair.to);
+			if (!target || target.elevation <= level.elevation || stair.path.length < 2) continue;
+			const lengths = stair.path.slice(1).map((p, i) => distance$1(stair.path[i], p)), total = lengths.reduce((a, b) => a + b, 0);
+			const count = stair.steps ?? Math.max(1, Math.ceil((target.elevation - level.elevation) / .17));
+			if (!total || !Number.isInteger(count) || count < 1) continue;
+			for (let step = 0; step < count; step++) {
+				const from = total * step / count, to = total * (step + 1) / count;
+				let offset = 0;
+				const strips = [];
+				lengths.forEach((length, i) => {
+					const a = Math.max(from, offset), b = Math.min(to, offset + length);
+					if (b > a && length > 0) {
+						const origin = stair.path[i], d = mul(sub$1(stair.path[i + 1], origin), 1 / length);
+						strips.push([beamFootprint({
+							id: stair.id,
+							a: add(origin, mul(d, a - offset)),
+							b: add(origin, mul(d, b - offset)),
+							width: stair.width,
+							bottom: 0
+						})]);
+					}
+					offset += length;
+				});
+				const polys = unionPolygons(strips);
+				const polygons = polys.length ? index.intersection(polys, [stair.poly]) : [];
+				if (polygons.length) solids.push({
+					kind: "stair",
+					polygons,
+					z0: level.elevation,
+					z1: level.elevation + (target.elevation - level.elevation) * (step + 1) / count,
+					ids: [stair.id],
+					level: level.id
+				});
+			}
+		}
+		return solids;
+	});
+}
+/** Plan dimensions remain mm; vertical dimensions are m; opening angle is degrees. */
+function buildLocalFixtures(plan, opts = {}) {
+	const result = [];
+	for (const o of plan.openings) {
+		if (!plan.walls.some((w) => w.id === o.wall) || o.head <= o.sill) continue;
+		const s = openingSpan(plan, o);
+		if (s.wall.bulge && o.kind !== "open-balcony" && o.kind !== "doorway") {
+			const symbol = openingSymbol(plan, o.id, opts);
+			for (const leaf of symbol.leaves) {
+				const a = leaf.path[0], b = leaf.path.at(-1), dir = wallDir({
+					a,
+					b
+				}), normal = [-dir[1], dir[0]], width = leaf.s[1] - leaf.s[0];
+				const common = {
+					id: o.id,
+					wall: o.wall,
+					path: leaf.path,
+					footprint: leaf.footprint,
+					paneIndex: leaf.index,
+					dir,
+					normal,
+					width,
+					z0: o.sill
+				};
+				if (leaf.kind === "door") result.push({
+					...common,
+					kind: "door",
+					hinge: leaf.hinge,
+					position: leaf.path[Math.floor(leaf.path.length / 2)],
+					thickness: 40,
+					height: o.head - o.sill,
+					angle: Math.max(0, Math.min(90, opts.doorAngle ?? 60)),
+					side: o.swing?.side ?? 1
+				});
+				else result.push({
+					...common,
+					kind: "pane",
+					openingKind: o.kind,
+					paneKind: leaf.kind,
+					a,
+					b,
+					center: leaf.path[Math.floor(leaf.path.length / 2)],
+					thickness: 30,
+					z1: o.head
+				});
+			}
+			continue;
+		}
+		if (o.kind === "door") {
+			const chordDir = wallDir({
+				a: s.a,
+				b: s.b
+			}), chordNormal = [-chordDir[1], chordDir[0]], width = s.wall.bulge ? distance$1(s.a, s.b) : o.width;
+			const swing = o.swing ?? {
+				hinge: "start",
+				side: 1
+			}, hinge = swing.hinge === "start" ? s.a : s.b, closed = mul(chordDir, swing.hinge === "start" ? 1 : -1), angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)), rad = angle * Math.PI / 180;
+			const dir = add(mul(closed, Math.cos(rad)), mul(chordNormal, swing.side * Math.sin(rad)));
+			result.push({
+				kind: "door",
+				id: o.id,
+				wall: o.wall,
+				hinge,
+				position: add(hinge, mul(dir, width / 2)),
+				dir,
+				normal: [-dir[1], dir[0]],
+				width,
+				thickness: 40,
+				height: o.head - o.sill,
+				z0: o.sill,
+				angle,
+				side: swing.side
+			});
+		} else if (o.kind === "open-balcony") result.push({
+			kind: "railing",
+			id: o.id,
+			wall: o.wall,
+			a: s.a,
+			b: s.b,
+			z0: o.sill,
+			z1: o.sill + 1.1,
+			height: 1.1
+		});
+		else if (o.kind !== "doorway") {
+			const panes = o.panes?.length ? o.panes : o.kind === "sliding" ? [{
+				width: 1,
+				kind: "sliding"
+			}, {
+				width: 1,
+				kind: "sliding"
+			}] : [{
+				width: 1,
+				kind: "fixed"
+			}], total = panes.reduce((sum, p) => sum + Math.max(0, p.width), 0);
+			if (!total) continue;
+			let offset = o.offset;
+			for (const pane of panes) {
+				const width = Math.max(0, pane.width) / total * o.width, count = s.wall.bulge ? Math.max(1, Math.ceil(width / 300)) : 1;
+				for (let i = 0; i < count; i++) {
+					const a = pointAt(s.wall, offset + width * i / count), b = pointAt(s.wall, offset + width * (i + 1) / count), dir = wallDir({
+						a,
+						b
+					});
+					result.push({
+						kind: "pane",
+						id: o.id,
+						wall: o.wall,
+						openingKind: o.kind,
+						paneKind: pane.kind,
+						a,
+						b,
+						center: s.wall.bulge ? mul(add(a, b), .5) : pointAt(s.wall, offset + width / 2),
+						dir: s.wall.bulge ? dir : s.dir,
+						normal: s.wall.bulge ? [-dir[1], dir[0]] : s.normal,
+						width: s.wall.bulge ? distance$1(a, b) : width,
+						thickness: 30,
+						z0: o.sill,
+						z1: o.head
+					});
+				}
+				offset += width;
+			}
+		}
+	}
+	return result;
+}
+function buildFixtures(plan, opts = {}) {
+	return buildLocalFixtures(plan, opts).map((f) => {
+		const level = levelOf(plan, plan.walls.find((w) => w.id === f.wall));
+		return {
+			...f,
+			z0: f.z0 + level.elevation,
+			..."z1" in f ? { z1: f.z1 + level.elevation } : {},
+			...hasLevelData(plan) ? { level: level.id } : {}
+		};
+	});
+}
+// src/core/merge-rooms.ts
+var ring = (poly) => [poly];
+/**
+* 房间贴着这面墙的那段（沿墙 mm）：墙带和房间多边形求交，再取沿墙范围。
+* 不能靠房间顶点：房间比墙长时，顶点都在墙端以外，投影过去离墙很远。
+*/
+function roomSpanOnWall(w, poly) {
+	const hit = index.intersection(ring(wallFootprint({
+		...w,
+		thickness: w.thickness + 120
+	})), ring(poly)).flat(2);
+	if (!hit.length) return null;
+	const s = hit.map((p) => projectToWall(w, p).s);
+	return [Math.min(...s), Math.max(...s)];
 }
 // src/core/persistence.ts
 var decorBlocksPersistence = {
@@ -13571,6 +14681,11 @@ var decorBlocksPersistence = {
 	protected: false,
 	"room-missing": false,
 	"arc-unsupported": false,
+	"unknown-type": false,
+	"unit-suspect": true,
+	"component-invalid": true,
+	"component-missing": false,
+	"column-width": true,
 	invalid: true,
 	"duplicate-id": true,
 	"material-missing": true
@@ -13596,13 +14711,479 @@ function isEmptyPlan(plan) {
 		"cabinets",
 		"panels",
 		"recesses",
-		"surfaces"
+		"surfaces",
+		"doors"
 	].some((k) => (plan.decor?.[k])?.length);
 }
 function loadError(issues) {
 	const errors = issues.filter(blocksPersistence);
 	if (!errors.length) return null;
 	return `这个方案文件有${errors.some((i) => i.code === "schema" || i.code === "parse") ? "格式" : "几何"}错误，没有载入：\n${errors.slice(0, 3).map((i) => i.message).join("\n")}${errors.length > 3 ? `\n另有 ${errors.length - 3} 条错误` : ""}`;
+}
+// scripts/decor-edit.ts
+var parsePlanText = (text) => parsePlanText$1(text, { allowUnknownOutsideDecor: true });
+var groups = {
+	furniture: "furniture",
+	cabinet: "cabinets",
+	panel: "panels",
+	recess: "recesses",
+	surface: "surfaces",
+	door: "doors"
+};
+var protectedKeys = [
+	"ack",
+	"by",
+	"prev",
+	"cache"
+];
+var object = (v) => v && typeof v === "object" && !Array.isArray(v);
+var afterPlan = (plan) => plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan;
+/** Replace exactly one top-level value, preserving every other source byte (including BOM and number spellings). */
+function replaceDecorText(source, decor) {
+	JSON.parse(source.replace(/^\uFEFF/, ""));
+	let i = source.charCodeAt(0) === 65279 ? 1 : 0;
+	const space = () => {
+		while (/\s/.test(source[i] ?? "") && i < source.length) i++;
+	};
+	const stringEnd = () => {
+		i++;
+		while (i < source.length) {
+			const c = source[i++];
+			if (c === "\\") i++;
+			else if (c === "\"") break;
+		}
+	};
+	const valueEnd = () => {
+		if (source[i] === "\"") {
+			stringEnd();
+			return;
+		}
+		if (source[i] === "[" || source[i] === "{") {
+			let depth = 0;
+			do {
+				if (source[i] === "\"") {
+					stringEnd();
+					continue;
+				}
+				const c = source[i++];
+				if (c === "[" || c === "{") depth++;
+				else if (c === "]" || c === "}") depth--;
+			} while (depth);
+			return;
+		}
+		while (i < source.length && !/[,}\]\s]/.test(source[i])) i++;
+	};
+	space();
+	if (source[i++] !== "{") throw new Error("方案必须是 JSON 对象");
+	space();
+	const matches = [];
+	let count = 0;
+	while (source[i] !== "}") {
+		const keyStart = i;
+		stringEnd();
+		const key = JSON.parse(source.slice(keyStart, i));
+		space();
+		i++;
+		space();
+		const start = i;
+		valueEnd();
+		if (key === "decor") matches.push([start, i]);
+		count++;
+		space();
+		if (source[i] === ",") {
+			i++;
+			space();
+		} else break;
+	}
+	if (matches.length > 1) throw new Error("顶层 decor 重复，请先移除重复字段");
+	const replacement = JSON.stringify(decor, null, 2);
+	if (matches.length) {
+		const [a, b] = matches[0];
+		return source.slice(0, a) + replacement + source.slice(b);
+	}
+	return source.slice(0, i) + (count ? "," : "") + "\n\"decor\": " + replacement + source.slice(i);
+}
+function atomicWrite(file, source, text) {
+	const temp = join(dirname(file), `.${basename(file)}.${randomUUID()}.tmp`);
+	let fd;
+	try {
+		fd = openSync(temp, "wx", statSync(file).mode & 511);
+		writeFileSync(fd, text);
+		fsyncSync(fd);
+		closeSync(fd);
+		fd = void 0;
+		if (readFileSync(file, "utf8") !== source) throw new Error("方案在编辑期间被修改，请重新读取后重试");
+		renameSync(temp, file);
+	} finally {
+		if (fd !== void 0) closeSync(fd);
+		rmSync(temp, { force: true });
+	}
+}
+function copyMaterials(d) {
+	const refs = /* @__PURE__ */ new Set();
+	const walk = (v, key = "") => {
+		if (typeof v === "string") {
+			if ([
+				"material",
+				"back",
+				"trim",
+				"body",
+				"fabric",
+				"carcass",
+				"front",
+				"color"
+			].includes(key)) refs.add(v);
+			return;
+		}
+		if (!object(v) && !Array.isArray(v)) return;
+		if (["roles", "board"].includes(key)) Object.values(v).forEach((x) => {
+			if (typeof x === "string") refs.add(x);
+		});
+		for (const [k, child] of Object.entries(v)) if (k !== "materials" || !Array.isArray(child)) walk(child, k);
+	};
+	walk(d);
+	walk([...d.presets ?? [], ...STYLE_PRESETS].find((p) => p.id === d.style));
+	for (const id of refs) if (!d.materials.some((m) => m.id === id)) {
+		const m = BUILTIN_MATERIALS.find((m) => m.id === id);
+		if (m) d.materials.push(structuredClone(m));
+	}
+}
+function editDecorFile(file, source, patch) {
+	if (file === "-") throw new Error("decor-edit 需要方案文件路径；补丁路径可以为 -");
+	const raw = JSON.parse(source.replace(/^\uFEFF/, ""));
+	if (raw.format !== "floorplan-structure" || raw.version !== 3) throw new Error("decor-edit 只支持 v3，请先 convert 并核对");
+	if (!object(patch) || !Array.isArray(patch.ops) || !patch.ops.length) throw new Error("补丁需要非空 ops 数组");
+	const touched = /* @__PURE__ */ new Map();
+	const locate = (id) => {
+		for (const [kind, key] of Object.entries(groups)) {
+			const list = raw.decor[key] ?? [], index = list.findIndex((v) => v.id === id);
+			if (index >= 0) return {
+				list,
+				index,
+				item: list[index],
+				kind
+			};
+		}
+		throw new Error(`装修项 ${id} 不存在，请用 decor-list 查看 id`);
+	};
+	const statusOf = (op) => {
+		const s = op.status ?? "pending";
+		if (!["pending", "confirmed"].includes(s)) throw new Error("status 必须是 pending 或 confirmed");
+		return s;
+	};
+	const writable = (v) => {
+		if (!object(v)) throw new Error("item/set 必须是对象");
+		for (const k of protectedKeys) if (Object.hasOwn(v, k)) throw new Error(`禁止写 ${k}，请移除该字段；ack 只能由用户在工具中记录`);
+	};
+	const remove = (id, rejecting = /* @__PURE__ */ new Set()) => {
+		const found = locate(id);
+		for (const item of decorItems(raw.decor)) {
+			const refs = [item, item.prev].filter(Boolean);
+			if (item.id !== id && !rejecting.has(item.id) && refs.some((v) => v.in === id || v.in?.startsWith(id + ":cell:") || v.host?.panel === id || v.host?.cabinet === id)) throw new Error(`${id} 被 ${item.id} 挂着，请先处理该项的 in/host`);
+		}
+		found.list.splice(found.index, 1);
+		if (raw.decor.cache) delete raw.decor.cache[id];
+	};
+	const upsert = (key, item) => {
+		if (!object(item) || typeof item.id !== "string" || !item.id) throw new Error(`${key} 需要非空 id`);
+		const list = raw.decor[key] ??= [], index = list.findIndex((v) => v.id === item.id);
+		if (index < 0) list.push(item);
+		else list[index] = item;
+	};
+	patch.ops.forEach((op, index) => {
+		try {
+			if (!object(op)) throw new Error("op 必须是对象");
+			if (op.op === "init") {
+				if (raw.decor !== void 0) throw new Error("已有 decor，不可重复 init");
+				raw.decor = createDecor(op.style);
+				return;
+			}
+			if (!raw.decor) throw new Error("还没有 decor，请先加 init 操作");
+			const d = raw.decor;
+			switch (op.op) {
+				case "style": {
+					const ids = [...STYLE_PRESETS, ...d.presets ?? []].map((s) => s.id);
+					if (!ids.includes(op.style)) throw new Error(`style 不存在，可选：${ids.join("、")}`);
+					d.style = op.style;
+					break;
+				}
+				case "add": {
+					if (!Object.hasOwn(groups, op.kind)) throw new Error(`未知 kind ${op.kind}；可选 ${Object.keys(groups).join("、")}`);
+					writable(op.item);
+					const item = structuredClone(op.item);
+					item.id ??= newId(raw, op.kind + "-");
+					if ([
+						...decorItems(d),
+						...d.materials,
+						...d.presets ?? [],
+						...d.components ?? [],
+						...raw.walls,
+						...raw.openings,
+						...raw.rooms,
+						...raw.beams,
+						...raw.questions,
+						...raw.changes,
+						...raw.levels ?? [],
+						...raw.columns ?? [],
+						...raw.shafts ?? [],
+						...raw.stairs ?? [],
+						...raw.voids ?? []
+					].some((x) => x.id === item.id)) throw new Error(`重复 id ${item.id}，请换一个 id 或省略 id 自动生成`);
+					item.by = "agent";
+					item.status = statusOf(op);
+					if (op.kind === "furniture") {
+						const def = componentOf(d, item.type), entry = FURNITURE_LIBRARY.find((f) => f.type === item.type);
+						if (def) {
+							item.size ??= [...def.size];
+							item.height ??= def.height;
+						} else if (entry) {
+							item.size ??= [...entry.size];
+							item.height ??= lengthUnit(entry.height);
+						}
+						if (!Array.isArray(item.size) || item.height === void 0) throw new Error(`家具库和方案里都没有 ${item.type}：要写 size 和 height（mm），或者先用 component 画一个`);
+						if (op.wall !== void 0 && op.ceiling !== void 0) throw new Error("ceiling 与 wall 不能同时使用，请选择一种定位");
+						if (op.ceiling !== void 0) {
+							if (!object(op.ceiling) || typeof op.ceiling.room !== "string") throw new Error("ceiling 需要 room id");
+							if (item.in || item.against) throw new Error("ceiling 与 in/against 不能同时使用，请选择一种定位");
+							const plan = afterPlan(parsePlanText(JSON.stringify(raw)).plan), room = plan.rooms.find((r) => r.id === op.ceiling.room);
+							if (!room) throw new Error(`房间 ${op.ceiling.room} 不存在；可选房间 id：${plan.rooms.map((r) => r.id).join("、") || "（无）"}`);
+							item.z = lengthUnit(roomCeiling(plan, room)) - item.height;
+							if (item.z < 0) throw new Error("构件高超过房间层高，无法贴顶");
+							item.at ??= [0, 1].map((axis) => (Math.min(...room.poly.map((p) => p[axis])) + Math.max(...room.poly.map((p) => p[axis]))) / 2);
+							item.rot ??= 0;
+							item.level = levelOf(plan, room).id;
+						}
+						if (op.wall !== void 0) {
+							if (!object(op.wall) || !object(op.wall.face) || ![1, -1].includes(op.wall.face.side)) throw new Error("wall.face 需要 wall id 和 side: 1 或 -1");
+							if (item.in) throw new Error("wall 与 in 不能同时使用，请选择一种定位");
+							const axis = faceAxis(afterPlan(parsePlanText(JSON.stringify(raw)).plan), op.wall.face), s = op.wall.s, gap = op.wall.gap ?? 0, z = op.wall.z ?? 0;
+							if (!Number.isFinite(s) || s < 0 || s > axis.length) throw new Error(`wall.s 应在 0–${axis.length} mm 内，表示中心离墙 a 端的距离`);
+							if (!Number.isFinite(gap) || gap < 0 || !Number.isFinite(z) || z < 0) throw new Error("wall.gap/z 必须为非负 mm");
+							const normal = axis.normalAt(s);
+							item.at = axis.at(s, gap + item.size[1] / 2);
+							item.rot = Math.atan2(normal[1], normal[0]) * 180 / Math.PI - 90;
+							item.z = z;
+							item.against = {
+								face: structuredClone(op.wall.face),
+								gap
+							};
+						}
+					} else if (op.wall !== void 0 || op.ceiling !== void 0) throw new Error("wall/ceiling 便捷定位仅用于 furniture");
+					(d[groups[op.kind]] ??= []).push(item);
+					touched.set(item.id, index + 1);
+					break;
+				}
+				case "update": {
+					writable(op.set);
+					if (Object.hasOwn(op.set, "id") && op.set.id !== op.id) throw new Error("update 不可改 id，请保留原 id");
+					if (op.unset !== void 0 && (!Array.isArray(op.unset) || op.unset.some((k) => typeof k !== "string"))) throw new Error("unset 需要字段名数组");
+					if (op.unset?.some((k) => [
+						...protectedKeys,
+						"id",
+						"status"
+					].includes(k))) throw new Error("unset 不可移除 id/status 或受保护字段 ack/by/prev/cache");
+					const found = locate(op.id), item = structuredClone(found.item), status = op.status === void 0 ? item.status : statusOf(op);
+					const prev = item.status === "confirmed" && status === "pending" ? structuredClone(item) : item.prev;
+					const resized = found.kind === "cabinet" && typeof op.set.width === "number" && !Object.hasOwn(op.set, "columns") && Array.isArray(item.columns) ? resizeCabinet(item, op.set.width).columns : void 0;
+					Object.assign(item, op.set);
+					if (resized) item.columns = resized;
+					for (const k of op.unset ?? []) delete item[k];
+					item.by = "agent";
+					item.status = status;
+					if (status === "pending" && prev) item.prev = prev;
+					else delete item.prev;
+					found.list[found.index] = item;
+					touched.set(item.id, index + 1);
+					break;
+				}
+				case "remove": {
+					const preset = (d.presets ?? []).findIndex((v) => v.id === op.id), comp = (d.components ?? []).findIndex((v) => v.id === op.id);
+					if (preset >= 0) {
+						if (d.style === op.id) throw new Error(`${op.id} 是当前风格，先用 style 换一个`);
+						d.presets.splice(preset, 1);
+					} else if (comp >= 0) {
+						const used = d.furniture.find((f) => f.type === `custom:${op.id}`);
+						if (used) throw new Error(`${op.id} 还摆着 ${used.id}，先删掉它`);
+						d.components.splice(comp, 1);
+					} else remove(op.id);
+					break;
+				}
+				case "confirm":
+				case "reject": {
+					if (!Array.isArray(op.ids) || !op.ids.length || op.ids.some((id) => typeof id !== "string")) throw new Error("ids 需要非空 id 数组");
+					const ids = [...new Set(op.ids)], rejecting = /* @__PURE__ */ new Set();
+					for (const id of ids) {
+						const preset = (d.presets ?? []).findIndex((v) => v.id === id);
+						if (preset >= 0) {
+							if (op.op === "reject") {
+								if (d.style === id) throw new Error(`${id} 是当前风格，先用 style 换一个`);
+								d.presets.splice(preset, 1);
+							}
+							continue;
+						}
+						const found = locate(id);
+						if (op.op === "confirm") {
+							found.item.status = "confirmed";
+							delete found.item.prev;
+						} else {
+							const restored = restoreDecorItem(found.item);
+							if (restored) found.list[found.index] = restored;
+							else rejecting.add(id);
+						}
+						touched.set(id, index + 1);
+					}
+					for (const id of rejecting) remove(id, rejecting);
+					break;
+				}
+				case "component": {
+					const c = structuredClone(op.component);
+					upsert("components", c);
+					touched.set(c.id, index + 1);
+					if ("by" in c || "status" in c) throw new Error("component 定义没有 by/status，请移除");
+					for (const f of d.furniture) if (f.type === `custom:${c.id}`) {
+						f.size = [...c.size];
+						f.height = c.height;
+						if (f.prev?.type === f.type) {
+							f.prev.size = [...c.size];
+							f.prev.height = c.height;
+						}
+						touched.set(f.id, index + 1);
+					}
+					break;
+				}
+				case "preset":
+					upsert("presets", {
+						...op.preset,
+						by: "agent"
+					});
+					touched.set(op.preset.id, index + 1);
+					break;
+				case "material":
+					upsert("materials", structuredClone(op.material));
+					touched.set(op.material.id, index + 1);
+					break;
+				case "rehost": {
+					const p = parsePlanText(JSON.stringify(raw)).plan;
+					d.cache ??= {};
+					raw.decor = planFileValue({
+						...p,
+						decor: rehostDecor(p, afterPlan(p), p.decor)
+					}).decor;
+					break;
+				}
+				default: throw new Error(`未知 op ${op.op}，请使用 init/style/add/update/remove/confirm/reject/component/preset/material/rehost`);
+			}
+		} catch (e) {
+			throw new Error(`第 ${index + 1} 条 op (${op?.op ?? "?"})：${e.message}；文件未写入`);
+		}
+	});
+	copyMaterials(raw.decor);
+	const text = replaceDecorText(source, raw.decor), parsed = parsePlanText(text);
+	const before = parsePlanText(source);
+	const known = /* @__PURE__ */ new Set([...before.issues.filter((i) => i.level === "error").map((i) => i.message), ...before.plan.decor ? validateDecorRaw(afterPlan(before.plan), before.plan.decor, before.plan).map((i) => i.id + "：" + i.text) : []]);
+	const errors = parsed.issues.filter((i) => blocksPersistence(i) || i.level === "error" && !known.has(i.message));
+	const hostErrors = validateDecorRaw(afterPlan(parsed.plan), parsed.plan.decor, parsed.plan).filter((i) => i.level === "error" && ["host-missing", "room-missing"].includes(i.code) && !known.has(i.id + "：" + i.text));
+	if (errors.length || hostErrors.length) throw new Error(`第 ${patch.ops.length} 条 op 后校验未通过；请修正下列字段后重试，文件未写入：\n` + [...errors.map((i) => i.message), ...hostErrors.map((i) => i.id + "：" + i.text)].map((message) => {
+		const location = /^格式错误 \/decor\/([^/]+)\/(\d+)/.exec(message), id = location ? raw.decor[location[1]]?.[+location[2]]?.id : [...touched.keys()].find((id) => message.startsWith(id + "："));
+		return `${id && touched.has(id) ? `第 ${touched.get(id)} 条 op：` : ""}${message}`;
+	}).join("\n"));
+	atomicWrite(file, source, text);
+	return {
+		ok: true,
+		applied: patch.ops.length,
+		issues: parsed.issues.filter((i) => !blocksPersistence(i)).map((i) => ({
+			...i,
+			level: i.level === "error" ? "warn" : i.level
+		})),
+		items: Object.entries(groups).flatMap(([kind, key]) => (raw.decor[key] ?? []).map((i) => ({
+			id: i.id,
+			status: i.status,
+			kind
+		})))
+	};
+}
+function listDecor(plan) {
+	plan = afterPlan(plan);
+	const d = plan.decor, doorIds = new Map(d?.doors?.map((d) => [d.opening, d.id])), combine = (a, b) => [...new Map([...a, ...b].map((i) => [i.id, i])).values()];
+	return {
+		furniture: FURNITURE_LIBRARY.map(({ type, name, category, size, height }) => ({
+			type,
+			name,
+			category,
+			size,
+			height: lengthUnit(height)
+		})),
+		styles: combine(STYLE_PRESETS, d?.presets ?? []).map(({ id, name }) => ({
+			id,
+			name
+		})),
+		materials: combine(BUILTIN_MATERIALS, d?.materials ?? []).map(({ id, name, category, color }) => ({
+			id,
+			name,
+			category,
+			color
+		})),
+		componentCategories: Object.entries(COMPONENT_CATEGORIES).map(([id, name]) => ({
+			id,
+			name
+		})),
+		components: d?.components?.map(({ id, name, category, size, height }) => ({
+			id,
+			name,
+			category,
+			size,
+			height
+		})) ?? [],
+		doors: d?.doors ?? [],
+		faces: plan.walls.flatMap((w) => [1, -1].flatMap((side) => {
+			const face = {
+				wall: w.id,
+				side
+			}, rooms = roomsBesideWall(plan, w.id)[side === 1 ? "positive" : "negative"], axis = faceAxis(plan, face);
+			return rooms.flatMap((room) => {
+				const span = roomSpanOnWall(w, room.poly);
+				if (!span) return [];
+				return faceIntervals(plan, face).flatMap(([a, b]) => {
+					const s = [Math.max(a, span[0]), Math.min(b, span[1])];
+					if (s[1] <= s[0]) return [];
+					return [{
+						room: room.id,
+						roomName: room.name,
+						dir: wallDirection(plan, face, (s[0] + s[1]) / 2),
+						wall: w.id,
+						side,
+						s,
+						length: s[1] - s[0],
+						wallLength: axis.length,
+						height: lengthUnit(effectiveWallHeight(plan, w)),
+						wallKind: w.kind,
+						openings: plan.openings.filter((o) => o.wall === w.id && o.offset < s[1] && o.offset + o.width > s[0]).map((o) => ({
+							id: o.id,
+							kind: o.kind,
+							s: [o.offset, o.offset + o.width],
+							sill: lengthUnit(o.sill),
+							head: lengthUnit(o.head),
+							...doorIds.has(o.id) ? { door: doorIds.get(o.id) } : {}
+						}))
+					}];
+				});
+			});
+		})),
+		items: d ? Object.entries(groups).flatMap(([kind, key]) => (d[key] ?? []).map((i) => ({
+			id: i.id,
+			kind,
+			name: ("name" in i ? i.name : void 0) ?? ("type" in i ? componentOf(d, i.type)?.name ?? FURNITURE_LIBRARY.find((f) => f.type === i.type)?.name : void 0) ?? {
+				furniture: "家具",
+				cabinet: "柜体",
+				panel: "造型",
+				recess: "壁龛 / 挖洞",
+				surface: "材料覆盖",
+				door: "门的外观"
+			}[kind],
+			status: i.status,
+			by: i.by
+		}))) : []
+	};
 }
 // node_modules/earcut/src/earcut.js
 /**
@@ -14154,449 +15735,6 @@ function signedArea(data, start, end, dim) {
 	}
 	return sum;
 }
-// src/core/opening-symbol.ts
-function openingPath(w, from, to, depth = 0) {
-	const arc = arcParams(w), n = arc ? Math.max(2, Math.ceil(Math.abs(to - from) / 150), Math.ceil(Math.abs(to - from) / wallLength(w) * Math.abs(arc.angle) / 5)) : 1;
-	return Array.from({ length: n + 1 }, (_, i) => {
-		const s = from + (to - from) * i / n, d = wallTangent(w, s);
-		return add(pointAt(w, s), mul([-d[1], d[0]], depth));
-	});
-}
-function openingStrip(w, from, to, thickness) {
-	return [...openingPath(w, from, to, thickness / 2), ...openingPath(w, from, to, -thickness / 2).reverse()];
-}
-function openingPanes(o) {
-	return o.kind === "door" ? o.panes?.length ? o.panes.map((p) => ({
-		width: p.width,
-		kind: "door"
-	})) : [{
-		width: 1,
-		kind: "door"
-	}] : o.kind === "doorway" || o.kind === "open-balcony" ? [] : o.panes?.length ? o.panes : o.kind === "sliding" ? [{
-		width: 1,
-		kind: "sliding"
-	}, {
-		width: 1,
-		kind: "sliding"
-	}] : [{
-		width: 1,
-		kind: "fixed"
-	}];
-}
-function openingSymbol(plan, id, opts = {}) {
-	const o = plan.openings.find((o) => o.id === id), w = plan.walls.find((w) => w.id === o?.wall);
-	if (!o || !w) throw new Error(`洞口或宿主墙不存在：${id}`);
-	const end = o.offset + o.width, edges = [openingPath(w, o.offset, end, w.thickness / 2), openingPath(w, o.offset, end, -w.thickness / 2)];
-	const divider = (s) => {
-		const p = pointAt(w, s), d = wallTangent(w, s), n = [-d[1], d[0]];
-		return [add(p, mul(n, w.thickness / 2)), add(p, mul(n, -w.thickness / 2))];
-	};
-	const result = {
-		id,
-		wall: w.id,
-		curved: !!w.bulge,
-		path: openingPath(w, o.offset, end),
-		edges,
-		jambs: [divider(o.offset), divider(end)],
-		divisions: [],
-		leaves: []
-	};
-	const panes = openingPanes(o).filter((p) => p.width > 0), total = panes.reduce((s, p) => s + p.width, 0);
-	let from = o.offset;
-	panes.forEach((pane, index) => {
-		const to = index === panes.length - 1 ? end : from + o.width * pane.width / total;
-		let path = openingPath(w, from, to), footprint = openingStrip(w, from, to, pane.kind === "door" ? 40 : 30), hinge;
-		if (pane.kind === "door") {
-			const swing = o.swing ?? {
-				hinge: panes.length > 1 && index === panes.length - 1 ? "end" : "start",
-				side: 1
-			}, angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)) * Math.PI / 180 * swing.side * (swing.hinge === "start" ? 1 : -1);
-			hinge = pointAt(w, swing.hinge === "start" ? from : to);
-			const rotate = (p) => {
-				const x = p[0] - hinge[0], y = p[1] - hinge[1];
-				return [hinge[0] + x * Math.cos(angle) - y * Math.sin(angle), hinge[1] + x * Math.sin(angle) + y * Math.cos(angle)];
-			};
-			path = path.map(rotate);
-			footprint = footprint.map(rotate);
-		}
-		result.leaves.push({
-			index,
-			kind: pane.kind,
-			s: [from, to],
-			path,
-			footprint,
-			...hinge ? { hinge } : {}
-		});
-		if (index < panes.length - 1) result.divisions.push(divider(to));
-		from = to;
-	});
-	return result;
-}
-// src/core/solids.ts
-function unionPolygons(polys) {
-	return polys.length ? index.union(polys[0], ...polys.slice(1)) : [];
-}
-function buildLevelSolids(plan, filter = () => true) {
-	const pieces = [], result = [];
-	const push = (kind, poly, z0, z1, ids, wallKind) => {
-		if (z1 - z0 > 1e-8 && poly.length >= 3) pieces.push({
-			kind,
-			polygons: [[poly]],
-			z0,
-			z1,
-			ids,
-			...wallKind ? { wallKind } : {}
-		});
-	};
-	for (const w of plan.walls.filter(filter)) {
-		const len = wallLength(w), height = effectiveWallHeight(plan, w), low = Math.min(w.lowHeight ?? DEFAULTS.lowHeight, height);
-		if (len <= 1e-7 || w.thickness <= 0 || height <= 0) continue;
-		const openings = plan.openings.filter((o) => o.wall === w.id), cuts = [.../* @__PURE__ */ new Set([
-			0,
-			len,
-			...openings.flatMap((o) => [Math.max(0, Math.min(len, o.offset)), Math.max(0, Math.min(len, o.offset + o.width))])
-		])].sort((a, b) => a - b);
-		for (let i = 1; i < cuts.length; i++) {
-			const a = cuts[i - 1], b = cuts[i], middle = (a + b) / 2, holes = openings.filter((o) => o.offset < middle && o.offset + o.width > middle), polygons = joinedWallFootprint(plan, w, a, b);
-			const zs = [.../* @__PURE__ */ new Set([
-				0,
-				height,
-				...w.kind === "half" || w.kind === "half-glass" ? [low] : [],
-				...holes.flatMap((o) => [Math.max(0, Math.min(height, o.sill)), Math.max(0, Math.min(height, o.head))])
-			])].sort((a, b) => a - b);
-			for (let j = 1; j < zs.length; j++) {
-				const z0 = zs[j - 1], z1 = zs[j], z = (z0 + z1) / 2;
-				if (holes.some((o) => z > o.sill && z < o.head) || w.kind === "half" && z > low) continue;
-				const kind = w.kind === "glass" || w.kind === "half-glass" && z >= low ? "glass" : holes.length ? holes.every((o) => z >= o.head) ? "lintel" : "sill" : "wall";
-				if (z1 - z0 > 1e-8 && polygons.length) pieces.push({
-					kind,
-					polygons,
-					z0,
-					z1,
-					ids: [w.id, ...holes.map((o) => o.id)],
-					wallKind: w.kind
-				});
-			}
-		}
-	}
-	for (const b of plan.beams) {
-		const d = [b.b[0] - b.a[0], b.b[1] - b.a[1]], ts = [0, 1];
-		const cross = (a, b) => a[0] * b[1] - a[1] * b[0];
-		for (const r of plan.rooms.filter((r) => levelOf(plan, r).id === levelOf(plan, b).id)) r.poly.forEach((a, i) => {
-			const q = r.poly[(i + 1) % r.poly.length], e = [q[0] - a[0], q[1] - a[1]], v = [a[0] - b.a[0], a[1] - b.a[1]], det = cross(d, e);
-			if (Math.abs(det) > 1e-8) {
-				const t = cross(v, e) / det, u = cross(v, d) / det;
-				if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
-			}
-		});
-		const cuts = [...new Set(ts)].sort((a, b) => a - b);
-		for (let i = 1; i < cuts.length; i++) push("beam", beamFootprint({
-			...b,
-			a: add(b.a, mul(d, cuts[i - 1])),
-			b: add(b.a, mul(d, cuts[i]))
-		}), b.bottom, ceilingAt(plan, add(b.a, mul(d, (cuts[i - 1] + cuts[i]) / 2)), levelOf(plan, b).id), [b.id]);
-	}
-	const priority = {
-		wall: 0,
-		sill: 1,
-		lintel: 2,
-		beam: 3,
-		glass: 4,
-		floor: 5,
-		platform: 6,
-		slab: 7,
-		stair: 8,
-		column: 9,
-		shaft: 10
-	};
-	pieces.sort((a, b) => priority[a.kind] - priority[b.kind] || (a.wallKind ?? "").localeCompare(b.wallKind ?? ""));
-	const occupied = [];
-	for (const piece of pieces) {
-		let cells = [piece];
-		for (const blocker of occupied) {
-			cells = cells.flatMap((cell) => {
-				const z0 = Math.max(cell.z0, blocker.z0), z1 = Math.min(cell.z1, blocker.z1);
-				if (z1 - z0 <= 1e-8) return [cell];
-				const inside = index.intersection(cell.polygons, blocker.polygons);
-				if (!inside.length) return [cell];
-				const outside = index.difference(cell.polygons, blocker.polygons);
-				const rest = [];
-				if (outside.length) rest.push({
-					...cell,
-					polygons: outside
-				});
-				if (z0 > cell.z0 + 1e-8) rest.push({
-					...cell,
-					polygons: inside,
-					z1: z0
-				});
-				if (z1 < cell.z1 - 1e-8) rest.push({
-					...cell,
-					polygons: inside,
-					z0: z1
-				});
-				return rest;
-			});
-			if (!cells.length) break;
-		}
-		const bands = /* @__PURE__ */ new Map();
-		for (const cell of cells) {
-			const key = `${cell.z0}:${cell.z1}`, prev = bands.get(key);
-			bands.set(key, prev ? {
-				...prev,
-				polygons: unionPolygons([...prev.polygons, ...cell.polygons])
-			} : cell);
-		}
-		result.push(...bands.values());
-		occupied.push(piece);
-	}
-	for (const r of plan.rooms) if (r.poly.length >= 3) {
-		result.push({
-			kind: "floor",
-			polygons: [[r.poly]],
-			z0: Math.min(0, r.floorOffset ?? 0) - .08,
-			z1: Math.min(0, r.floorOffset ?? 0),
-			ids: [r.id]
-		});
-		if ((r.floorOffset ?? 0) > 0) result.push({
-			kind: "platform",
-			polygons: [[r.poly]],
-			z0: 0,
-			z1: r.floorOffset,
-			ids: [r.id]
-		});
-	}
-	return result;
-}
-/** Generate each level independently, then translate local heights to absolute elevations. */
-function buildSolids(plan, filter = () => true) {
-	if (!hasLevelData(plan)) return buildLevelSolids(plan, filter);
-	return levelsOf(plan).flatMap((level, index$1) => {
-		const view = onLevel(plan, level.id), holes = (view.voids ?? []).map((v) => [v.poly]);
-		const cut = (polys) => holes.length && polys.length ? index.difference(polys, ...holes) : polys;
-		const solids = buildLevelSolids(view, filter).map((s) => {
-			if (s.kind === "floor" || s.kind === "platform") s = {
-				...s,
-				polygons: cut(s.polygons)
-			};
-			if (index$1 > 0 && s.kind === "floor") s = {
-				...s,
-				kind: "slab",
-				z0: s.z1 - .12
-			};
-			return {
-				...s,
-				level: level.id,
-				z0: s.z0 + level.elevation,
-				z1: s.z1 + level.elevation
-			};
-		}).filter((s) => s.polygons.length);
-		if (index$1 > 0) {
-			let polys = wallFootprints(view);
-			const rooms = view.rooms.filter((r) => r.poly.length >= 3).map((r) => [r.poly]);
-			if (polys.length && rooms.length) polys = index.difference(polys, ...rooms);
-			polys = cut(polys);
-			if (polys.length) solids.push({
-				kind: "slab",
-				polygons: polys,
-				z0: level.elevation - .12,
-				z1: level.elevation,
-				ids: view.walls.map((w) => w.id),
-				level: level.id
-			});
-		}
-		for (const c of view.columns ?? []) solids.push({
-			kind: "column",
-			polygons: [[columnFootprint(c)]],
-			z0: level.elevation,
-			z1: level.elevation + levelCeiling(plan, level.id),
-			ids: [c.id],
-			level: level.id
-		});
-		for (const shaft of view.shafts ?? []) if (shaft.poly.length >= 3) solids.push({
-			kind: "shaft",
-			polygons: [[shaft.poly]],
-			z0: level.elevation,
-			z1: level.elevation + levelCeiling(plan, level.id),
-			ids: [shaft.id],
-			level: level.id
-		});
-		for (const stair of view.stairs ?? []) {
-			const target = levelsOf(plan).find((l) => l.id === stair.to);
-			if (!target || target.elevation <= level.elevation || stair.path.length < 2) continue;
-			const lengths = stair.path.slice(1).map((p, i) => distance$1(stair.path[i], p)), total = lengths.reduce((a, b) => a + b, 0);
-			const count = stair.steps ?? Math.max(1, Math.ceil((target.elevation - level.elevation) / .17));
-			if (!total || !Number.isInteger(count) || count < 1) continue;
-			for (let step = 0; step < count; step++) {
-				const from = total * step / count, to = total * (step + 1) / count;
-				let offset = 0;
-				const strips = [];
-				lengths.forEach((length, i) => {
-					const a = Math.max(from, offset), b = Math.min(to, offset + length);
-					if (b > a && length > 0) {
-						const origin = stair.path[i], d = mul(sub$1(stair.path[i + 1], origin), 1 / length);
-						strips.push([beamFootprint({
-							id: stair.id,
-							a: add(origin, mul(d, a - offset)),
-							b: add(origin, mul(d, b - offset)),
-							width: stair.width,
-							bottom: 0
-						})]);
-					}
-					offset += length;
-				});
-				const polys = unionPolygons(strips);
-				const polygons = polys.length ? index.intersection(polys, [stair.poly]) : [];
-				if (polygons.length) solids.push({
-					kind: "stair",
-					polygons,
-					z0: level.elevation,
-					z1: level.elevation + (target.elevation - level.elevation) * (step + 1) / count,
-					ids: [stair.id],
-					level: level.id
-				});
-			}
-		}
-		return solids;
-	});
-}
-/** Plan dimensions remain mm; vertical dimensions are m; opening angle is degrees. */
-function buildLocalFixtures(plan, opts = {}) {
-	const result = [];
-	for (const o of plan.openings) {
-		if (!plan.walls.some((w) => w.id === o.wall) || o.head <= o.sill) continue;
-		const s = openingSpan(plan, o);
-		if (s.wall.bulge && o.kind !== "open-balcony" && o.kind !== "doorway") {
-			const symbol = openingSymbol(plan, o.id, opts);
-			for (const leaf of symbol.leaves) {
-				const a = leaf.path[0], b = leaf.path.at(-1), dir = wallDir({
-					a,
-					b
-				}), normal = [-dir[1], dir[0]], width = leaf.s[1] - leaf.s[0];
-				const common = {
-					id: o.id,
-					wall: o.wall,
-					path: leaf.path,
-					footprint: leaf.footprint,
-					paneIndex: leaf.index,
-					dir,
-					normal,
-					width,
-					z0: o.sill
-				};
-				if (leaf.kind === "door") result.push({
-					...common,
-					kind: "door",
-					hinge: leaf.hinge,
-					position: leaf.path[Math.floor(leaf.path.length / 2)],
-					thickness: 40,
-					height: o.head - o.sill,
-					angle: Math.max(0, Math.min(90, opts.doorAngle ?? 60)),
-					side: o.swing?.side ?? 1
-				});
-				else result.push({
-					...common,
-					kind: "pane",
-					openingKind: o.kind,
-					paneKind: leaf.kind,
-					a,
-					b,
-					center: leaf.path[Math.floor(leaf.path.length / 2)],
-					thickness: 30,
-					z1: o.head
-				});
-			}
-			continue;
-		}
-		if (o.kind === "door") {
-			const chordDir = wallDir({
-				a: s.a,
-				b: s.b
-			}), chordNormal = [-chordDir[1], chordDir[0]], width = s.wall.bulge ? distance$1(s.a, s.b) : o.width;
-			const swing = o.swing ?? {
-				hinge: "start",
-				side: 1
-			}, hinge = swing.hinge === "start" ? s.a : s.b, closed = mul(chordDir, swing.hinge === "start" ? 1 : -1), angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)), rad = angle * Math.PI / 180;
-			const dir = add(mul(closed, Math.cos(rad)), mul(chordNormal, swing.side * Math.sin(rad)));
-			result.push({
-				kind: "door",
-				id: o.id,
-				wall: o.wall,
-				hinge,
-				position: add(hinge, mul(dir, width / 2)),
-				dir,
-				normal: [-dir[1], dir[0]],
-				width,
-				thickness: 40,
-				height: o.head - o.sill,
-				z0: o.sill,
-				angle,
-				side: swing.side
-			});
-		} else if (o.kind === "open-balcony") result.push({
-			kind: "railing",
-			id: o.id,
-			wall: o.wall,
-			a: s.a,
-			b: s.b,
-			z0: o.sill,
-			z1: o.sill + 1.1,
-			height: 1.1
-		});
-		else if (o.kind !== "doorway") {
-			const panes = o.panes?.length ? o.panes : o.kind === "sliding" ? [{
-				width: 1,
-				kind: "sliding"
-			}, {
-				width: 1,
-				kind: "sliding"
-			}] : [{
-				width: 1,
-				kind: "fixed"
-			}], total = panes.reduce((sum, p) => sum + Math.max(0, p.width), 0);
-			if (!total) continue;
-			let offset = o.offset;
-			for (const pane of panes) {
-				const width = Math.max(0, pane.width) / total * o.width, count = s.wall.bulge ? Math.max(1, Math.ceil(width / 300)) : 1;
-				for (let i = 0; i < count; i++) {
-					const a = pointAt(s.wall, offset + width * i / count), b = pointAt(s.wall, offset + width * (i + 1) / count), dir = wallDir({
-						a,
-						b
-					});
-					result.push({
-						kind: "pane",
-						id: o.id,
-						wall: o.wall,
-						openingKind: o.kind,
-						paneKind: pane.kind,
-						a,
-						b,
-						center: s.wall.bulge ? mul(add(a, b), .5) : pointAt(s.wall, offset + width / 2),
-						dir: s.wall.bulge ? dir : s.dir,
-						normal: s.wall.bulge ? [-dir[1], dir[0]] : s.normal,
-						width: s.wall.bulge ? distance$1(a, b) : width,
-						thickness: 30,
-						z0: o.sill,
-						z1: o.head
-					});
-				}
-				offset += width;
-			}
-		}
-	}
-	return result;
-}
-function buildFixtures(plan, opts = {}) {
-	return buildLocalFixtures(plan, opts).map((f) => {
-		const level = levelOf(plan, plan.walls.find((w) => w.id === f.wall));
-		return {
-			...f,
-			z0: f.z0 + level.elevation,
-			..."z1" in f ? { z1: f.z1 + level.elevation } : {},
-			...hasLevelData(plan) ? { level: level.id } : {}
-		};
-	});
-}
 // src/core/mesh.ts
 /** White-model palette = the tool's clay3 set in three/materials.ts (sRGB). Glass is a pale cool white, drawn see-through.
 * Decor follows the tool's decor-mode clay look: furniture in the platform tone, cabinets and panels in the wall tone. */
@@ -14638,7 +15776,7 @@ function modelPlan(plan, state = "original") {
 	} : applyChanges(plan, changes);
 	const failed = replay.results.filter((r) => !r.ok);
 	if (failed.length) throw new Error(`改造重放失败：${failed.map((r) => `${r.id}: ${r.error}`).join("; ")}`);
-	const errors = validateReplay(replay, changes, plan.legacy?.__structureReplayFrame ? void 0 : plan).filter((i) => i.level === "error");
+	const errors = validateReplay(replay, changes, plan.legacy?.__structureReplayFrame ? void 0 : plan).filter(blocksPersistence);
 	if (errors.length) throw new Error(`改造最终校验失败：${errors.map((i) => `${i.code}: ${i.message}`).join("; ")}`);
 	return replay.plan;
 }
@@ -14950,21 +16088,6 @@ function meshToGlb(groups) {
 function exportGlb(plan, options = {}) {
 	return meshToGlb(buildMesh(plan, options));
 }
-// src/core/merge-rooms.ts
-var ring = (poly) => [poly];
-/**
-* 房间贴着这面墙的那段（沿墙 mm）：墙带和房间多边形求交，再取沿墙范围。
-* 不能靠房间顶点：房间比墙长时，顶点都在墙端以外，投影过去离墙很远。
-*/
-function roomSpanOnWall(w, poly) {
-	const hit = index.intersection(ring(wallFootprint({
-		...w,
-		thickness: w.thickness + 120
-	})), ring(poly)).flat(2);
-	if (!hit.length) return null;
-	const s = hit.map((p) => projectToWall(w, p).s);
-	return [Math.min(...s), Math.max(...s)];
-}
 // src/core/decor/solids.ts
 /** A complete structural scene, with real recesses subtracted; buildSolids stays untouched. */
 function decorWallSolids(plan, decor = plan.decor) {
@@ -15098,15 +16221,32 @@ function buildDecorSolids(plan) {
 		if (panel.frame?.style === "raised") drawPolys(g.frames, [g.thickness, g.thickness + 8], "decor-panel-frame");
 	} catch {}
 	for (const f of d.furniture.filter((f) => !missing.has(f.id) || d.cache?.[f.id])) {
-		const level = furnitureLevel(plan, f);
-		result.push({
+		const level = furnitureLevel(plan, f), pose = furniturePose(plan, f), def = componentOf(d, f.type);
+		const base = {
 			kind: "decor-furniture",
 			...missing.has(f.id) ? { missing: true } : {},
 			ids: [f.id],
-			polygons: [[furniturePose(plan, f).footprint]],
-			z0: furniturePose(plan, f).z + level.elevation,
-			z1: furniturePose(plan, f).z + f.height + level.elevation,
-			level: level.id,
+			level: level.id
+		};
+		if (isCustomType(f.type)) {
+			if (!def) continue;
+			const a = pose.rot * Math.PI / 180, co = Math.cos(a), si = Math.sin(a);
+			for (const prism of componentPrisms(def)) result.push({
+				...base,
+				polygons: prism.polygons.map((rings) => rings.map((r) => r.map(([u, v]) => {
+					const x = (u - def.size[0] / 2) * (f.flip ? -1 : 1), y = v - def.size[1] / 2;
+					return [pose.at[0] + x * co - y * si, pose.at[1] + x * si + y * co];
+				}))),
+				z0: pose.z + level.elevation + prism.z0 / 1e3,
+				z1: pose.z + level.elevation + prism.z1 / 1e3,
+				...prism.color ? { color: prism.color } : {},
+				...prism.material ?? f.materials?.body ? { material: prism.material ?? f.materials?.body } : {}
+			});
+		} else result.push({
+			...base,
+			polygons: [[pose.footprint]],
+			z0: pose.z + level.elevation,
+			z1: pose.z + f.height + level.elevation,
 			...f.materials?.body ? { material: f.materials.body } : {}
 		});
 	}
@@ -15801,7 +16941,21 @@ var FURNITURE_SEG = {
 	basin: "sink",
 	bathtub: "bathtub"
 };
-var furnitureSeg = (type) => FURNITURE_SEG[type] ?? FURNITURE_SEG[type.replace(/-\d+$/, "")] ?? "box";
+var furnitureSeg = (type, decor) => {
+	const def = componentOf(decor, type);
+	if (def) return def.seg && Object.hasOwn(SEG_CLASSES, def.seg) ? def.seg : {
+		furniture: "table",
+		appliance: "box",
+		sanitary: "toilet",
+		lighting: "box",
+		ceiling: "ceiling",
+		plant: "box",
+		soft: "rug",
+		storage: "cabinet",
+		other: "box"
+	}[def.category];
+	return FURNITURE_SEG[type] ?? FURNITURE_SEG[type.replace(/-\d+$/, "")] ?? "box";
+};
 /**
 * The decor layer as the tool's decor mode shows it in clay: furniture boxes, cabinet and panel solids, recess shelves,
 * and walls with niches swapped for their cut replacements (`replaced` keys the structural parts to drop).
@@ -15815,7 +16969,12 @@ function decorSkipped(source, full, options) {
 function decorObstacles(source, full, options) {
 	if (decorSkipped(source, full, options)) return [];
 	try {
-		return buildDecorSolids(full).filter((s) => !s.replaces && !s.missing && (s.kind === "decor-furniture" || s.kind.startsWith("decor-cabinet"))).map((s) => ({
+		full = options.includePending ? full : {
+			...full,
+			decor: confirmedDecor(full.decor)
+		};
+		const overhead = new Set(full.decor?.furniture.filter((f) => isOverhead(full, f)).map((f) => f.id));
+		return buildDecorSolids(full).filter((s) => !overhead.has(s.ids[0]) && !s.replaces && !s.missing && (s.kind === "decor-furniture" || s.kind.startsWith("decor-cabinet"))).map((s) => ({
 			level: s.level,
 			z0: s.z0,
 			z1: s.z1,
@@ -15825,11 +16984,21 @@ function decorObstacles(source, full, options) {
 		return [];
 	}
 }
-function decorScene(source, full, options, level, cutHeight) {
+function decorScene(source, full, options, level, cutHeight, interior) {
+	const pending = {
+		overheadHidden: 0,
+		pendingHidden: options.includePending ? 0 : pendingCount(full.decor),
+		includePending: !!options.includePending
+	};
+	if (!options.includePending) full = {
+		...full,
+		decor: confirmedDecor(full.decor)
+	};
 	const parts = [], replaced = /* @__PURE__ */ new Set(), skip = (skipped, error) => ({
 		parts,
 		replaced,
 		view: {
+			...pending,
 			drawn: false,
 			skipped,
 			...error ? { error } : {},
@@ -15838,6 +17007,18 @@ function decorScene(source, full, options, level, cutHeight) {
 	});
 	const skipped = decorSkipped(source, full, options);
 	if (skipped) return skip(skipped);
+	if (!interior || options.section !== void 0) {
+		const hidden = full.decor.furniture.filter((f) => (!level || furnitureLevel(full, f).id === level) && isOverhead(full, f));
+		pending.overheadHidden = hidden.length;
+		const ids = new Set(hidden.map((f) => f.id));
+		full = {
+			...full,
+			decor: {
+				...full.decor,
+				furniture: full.decor.furniture.filter((f) => !ids.has(f.id))
+			}
+		};
+	}
 	let solids;
 	try {
 		solids = buildDecorSolids(full);
@@ -15864,33 +17045,41 @@ function decorScene(source, full, options, level, cutHeight) {
 			id,
 			kind: "furniture",
 			type: f.type,
-			name: f.name ?? FURNITURE_LIBRARY.find((e) => e.type === f.type)?.name ?? f.type,
-			seg: furnitureSeg(f.type)
+			name: f.name ?? componentOf(d, f.type)?.name ?? FURNITURE_LIBRARY.find((e) => e.type === f.type)?.name ?? f.type,
+			seg: furnitureSeg(f.type, d),
+			...(f.look ?? componentOf(d, f.type)?.look) !== void 0 ? { look: f.look ?? componentOf(d, f.type)?.look } : {}
 		});
 		else if (c) decorInfo.set(part, {
 			id,
 			kind: "cabinet",
 			name: c.name ?? "柜体",
-			seg: "cabinet"
+			seg: "cabinet",
+			...c.look !== void 0 ? { look: c.look } : {}
 		});
 		else if (panel) decorInfo.set(part, {
 			id,
 			kind: "panel",
 			name: panel.name ?? "墙面造型",
-			seg: "wall"
+			seg: "wall",
+			...panel.look !== void 0 ? { look: panel.look } : {}
 		});
-		else decorInfo.set(part, {
-			id,
-			kind: "shelf",
-			name: "壁龛层板",
-			seg: "shelf"
-		});
+		else {
+			const look = d.recesses.find((r) => r.id === id)?.look;
+			decorInfo.set(part, {
+				id,
+				kind: "shelf",
+				name: "壁龛层板",
+				seg: "shelf",
+				...look !== void 0 ? { look } : {}
+			});
+		}
 		parts.push(part);
 	}
 	return {
 		parts,
 		replaced,
 		view: {
+			...pending,
 			drawn: true,
 			visible: []
 		}
@@ -16145,7 +17334,7 @@ function renderFrame(source, options = {}) {
 	if (options.section !== void 0 && (!Number.isFinite(options.section) || options.section <= 0)) throw new Error("--section 必须是正数 mm");
 	const c = resolveCamera(source, options), full = preparedPlan(source, options.state), level = options.level ?? c.level, plan = level ? selectedLevel(full, level) : full;
 	const cutHeight = options.section !== void 0 ? options.section / 1e3 : c.id === "top" ? S.cutHeight : options.cutHeight;
-	const decor = decorScene(source, full, options, level, cutHeight);
+	const decor = decorScene(source, full, options, level, cutHeight, typeof options.camera === "object" || typeof options.camera === "string" && /^(room:|pos=)/.test(options.camera));
 	const parts = [...sharedMesh(plan, { cutHeight }).flatMap((g) => g.parts).filter((p) => !decor.replaced.has(`${p.kind}|${p.ids.join(",")}`)), ...decor.parts];
 	if (!parts.length) throw new Error("方案没有可渲染的实体");
 	const lo = [
@@ -16574,6 +17763,7 @@ var SEG_CLASSES = {
 };
 /** Furniture and cabinet classes: gen_score.py leaves their edges out of the structure score. */
 var DECOR_SEG_CLASSES = [
+	"ceiling",
 	"bed",
 	"cabinet",
 	"table",
@@ -16732,9 +17922,18 @@ function renderKit(plan, options = {}) {
 			b[3] = Math.max(b[3], y);
 		}
 	}
+	const finishes = f.camera.decor?.drawn ? (options.includePending ? f.plan.decor : confirmedDecor(f.plan.decor))?.doors ?? [] : [];
+	const appearance = (id) => {
+		const d = finishes.find((d) => d.opening === id);
+		return {
+			...d?.look !== void 0 ? { look: d.look } : {},
+			...d?.color !== void 0 ? { color: d.color } : {}
+		};
+	};
 	const instances = f.plan.openings.map((o, i) => ({
 		idx: i + 1,
 		id: o.id,
+		...appearance(o.id),
 		name: o.name ?? o.id,
 		kind: o.kind,
 		cls: o.kind.includes("window") || o.kind === "open-balcony" ? "window" : "door",
@@ -16920,7 +18119,7 @@ function planStats(plan) {
 var generate_exports = /* @__PURE__ */ __exportAll({});
 var init_generate = __esmMin((() => {
 	mkdirSync("schema", { recursive: true });
-	writeFileSync("schema/plan.schema.json", "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"urn:floorplan-structure:v3\",\n  \"title\": \"户型结构方案 v3（全部长度 mm）\",\n  \"description\": \"所有长度含高度均为 mm；像素坐标为 px、角度为度、面积为 m²、panes.width 为比例。legacy 是不透明旧格式快照，不参与 v3 换算。\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"decor\": {\n      \"$ref\": \"#/$defs/Decor\"\n    },\n    \"format\": {\n      \"const\": \"floorplan-structure\"\n    },\n    \"version\": {\n      \"const\": 3\n    },\n    \"title\": {\n      \"type\": \"string\"\n    },\n    \"ceiling\": {\n      \"type\": \"number\",\n      \"exclusiveMinimum\": 0\n    },\n    \"north\": {\n      \"type\": \"number\"\n    },\n    \"levels\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Level\"\n      },\n      \"minItems\": 1\n    },\n    \"columns\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Column\"\n      }\n    },\n    \"shafts\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Shaft\"\n      }\n    },\n    \"stairs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Stair\"\n      }\n    },\n    \"voids\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Void\"\n      }\n    },\n    \"levelUnderlays\": {\n      \"type\": \"object\",\n      \"additionalProperties\": {\n        \"$ref\": \"#/$defs/Underlay\"\n      }\n    },\n    \"walls\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Wall\"\n      }\n    },\n    \"openings\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Opening\"\n      }\n    },\n    \"beams\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Beam\"\n      }\n    },\n    \"rooms\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Room\"\n      }\n    },\n    \"underlay\": {\n      \"$ref\": \"#/$defs/Underlay\"\n    },\n    \"questions\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Question\"\n      }\n    },\n    \"changes\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Change\"\n      }\n    },\n    \"legacy\": {\n      \"type\": \"object\",\n      \"additionalProperties\": true\n    },\n    \"meta\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"planFile\": {\n          \"type\": \"string\"\n        },\n        \"source\": {\n          \"type\": \"string\"\n        },\n        \"createdAt\": {\n          \"type\": \"string\"\n        },\n        \"updatedAt\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\n    \"format\",\n    \"version\",\n    \"title\",\n    \"ceiling\",\n    \"walls\",\n    \"openings\",\n    \"beams\",\n    \"rooms\",\n    \"questions\",\n    \"changes\"\n  ],\n  \"additionalProperties\": false,\n  \"$defs\": {\n    \"Vec2\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 2,\n      \"maxItems\": 2\n    },\n    \"Box\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 4,\n      \"maxItems\": 4\n    },\n    \"Certainty\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"seen\",\n        \"inferred\",\n        \"unknown\"\n      ]\n    },\n    \"WallKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"exterior\",\n        \"bearing\",\n        \"partition\",\n        \"glass\",\n        \"half\",\n        \"half-glass\"\n      ]\n    },\n    \"OpeningKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"door\",\n        \"sliding\",\n        \"doorway\",\n        \"window\",\n        \"floor-window\",\n        \"bay-window\",\n        \"open-balcony\"\n      ]\n    },\n    \"PaneKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"fixed\",\n        \"casement\",\n        \"sliding\"\n      ]\n    },\n    \"Evidence\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"basis\": {\n          \"type\": \"string\"\n        },\n        \"pixelBox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"confirmed\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            },\n            \"note\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"certainty\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Wall\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/WallKind\"\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"lowHeight\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"bulge\": {\n          \"type\": \"number\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"thickness\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Opening\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"wall\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"offset\": {\n          \"type\": \"number\",\n          \"minimum\": 0\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/OpeningKind\"\n        },\n        \"sill\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"head\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"swing\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"hinge\": {\n              \"type\": \"string\",\n              \"enum\": [\n                \"start\",\n                \"end\"\n              ]\n            },\n            \"side\": {\n              \"enum\": [\n                1,\n                -1\n              ]\n            }\n          },\n          \"required\": [\n            \"hinge\",\n            \"side\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"panes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"width\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"kind\": {\n                \"$ref\": \"#/$defs/PaneKind\"\n              }\n            },\n            \"required\": [\n              \"width\",\n              \"kind\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"minItems\": 1\n        },\n        \"entry\": {\n          \"type\": \"boolean\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"wall\",\n        \"offset\",\n        \"width\",\n        \"kind\",\n        \"sill\",\n        \"head\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Beam\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"bottom\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"width\",\n        \"bottom\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Room\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"floorOffset\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"use\": {\n          \"type\": \"string\"\n        },\n        \"counted\": {\n          \"type\": \"boolean\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Level\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"elevation\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"elevation\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Column\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"center\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"shape\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"rect\",\n            \"round\"\n          ]\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"bearing\",\n            \"decorative\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"center\",\n        \"shape\",\n        \"size\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Shaft\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"flue\",\n            \"pipe\",\n            \"vent\",\n            \"other\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"poly\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Stair\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"to\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"path\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 2\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"straight\",\n            \"L\",\n            \"U\",\n            \"spiral\"\n          ]\n        },\n        \"steps\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"to\",\n        \"poly\",\n        \"path\",\n        \"width\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Void\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Underlay\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"src\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"pattern\": \"^(?:(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]{2}).+|data:image/(?:png|jpe?g|webp|gif|bmp|avif);base64,.+|data:image/svg\\\\+xml(?:;charset=utf-8)?(?:;base64)?,.+)$\"\n        },\n        \"mmPerPx\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"mmPerPxY\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"origin\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"flipX\": {\n          \"type\": \"boolean\"\n        },\n        \"flipY\": {\n          \"type\": \"boolean\"\n        },\n        \"opacity\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 100\n        },\n        \"visible\": {\n          \"type\": \"boolean\"\n        },\n        \"calibrations\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"p1\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"p2\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"length\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"note\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"p1\",\n              \"p2\",\n              \"length\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"src\",\n        \"mmPerPx\",\n        \"origin\",\n        \"opacity\",\n        \"visible\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionStatus\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"open\",\n        \"answered\",\n        \"resolved\"\n      ]\n    },\n    \"QuestionOutcome\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"changed\",\n        \"confirmed\",\n        \"inferred\",\n        \"noted\",\n        \"ask\",\n        \"withdrawn\"\n      ]\n    },\n    \"QuestionReply\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"outcome\",\n        \"text\",\n        \"by\",\n        \"at\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionLogEntry\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"role\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        },\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      },\n      \"required\": [\n        \"role\",\n        \"text\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Question\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"original\",\n            \"renovation\"\n          ]\n        },\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"bbox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"targets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"options\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"answer\": {\n          \"type\": \"string\"\n        },\n        \"answeredBy\": {\n          \"type\": \"string\"\n        },\n        \"answeredAt\": {\n          \"type\": \"string\"\n        },\n        \"status\": {\n          \"$ref\": \"#/$defs/QuestionStatus\"\n        },\n        \"reply\": {\n          \"$ref\": \"#/$defs/QuestionReply\"\n        },\n        \"log\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/QuestionLogEntry\"\n          }\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"text\",\n        \"category\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Change\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"op\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"add\",\n            \"remove\",\n            \"update\"\n          ]\n        },\n        \"type\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"wall\",\n            \"opening\",\n            \"beam\",\n            \"room\",\n            \"column\",\n            \"shaft\",\n            \"stair\",\n            \"void\"\n          ]\n        },\n        \"target\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"data\": {\n          \"type\": \"object\"\n        },\n        \"range\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"group\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"status\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"pending\",\n            \"confirmed\"\n          ]\n        },\n        \"confirm\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"op\",\n        \"type\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false,\n      \"allOf\": [\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          },\n          \"else\": {\n            \"required\": [\n              \"target\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"thickness\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/WallKind\"\n                  },\n                  \"height\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"lowHeight\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"bulge\": {\n                    \"type\": \"number\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"wall\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"offset\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/OpeningKind\"\n                  },\n                  \"sill\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"head\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"swing\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"hinge\": {\n                        \"type\": \"string\",\n                        \"enum\": [\n                          \"start\",\n                          \"end\"\n                        ]\n                      },\n                      \"side\": {\n                        \"enum\": [\n                          1,\n                          -1\n                        ]\n                      }\n                    },\n                    \"required\": [\n                      \"hinge\",\n                      \"side\"\n                    ],\n                    \"additionalProperties\": false\n                  },\n                  \"panes\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"width\": {\n                          \"type\": \"number\",\n                          \"exclusiveMinimum\": 0\n                        },\n                        \"kind\": {\n                          \"$ref\": \"#/$defs/PaneKind\"\n                        }\n                      },\n                      \"required\": [\n                        \"width\",\n                        \"kind\"\n                      ],\n                      \"additionalProperties\": false\n                    },\n                    \"minItems\": 1\n                  },\n                  \"entry\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"bottom\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"ceiling\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"floorOffset\": {\n                    \"type\": \"number\",\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"use\": {\n                    \"type\": \"string\"\n                  },\n                  \"counted\": {\n                    \"type\": \"boolean\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"center\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"shape\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"rect\",\n                      \"round\"\n                    ]\n                  },\n                  \"size\": {\n                    \"type\": \"array\",\n                    \"prefixItems\": [\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      },\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      }\n                    ],\n                    \"minItems\": 2,\n                    \"maxItems\": 2\n                  },\n                  \"rotation\": {\n                    \"type\": \"number\"\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"bearing\",\n                      \"decorative\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"flue\",\n                      \"pipe\",\n                      \"vent\",\n                      \"other\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"to\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"path\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 2\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"straight\",\n                      \"L\",\n                      \"U\",\n                      \"spiral\"\n                    ]\n                  },\n                  \"steps\": {\n                    \"type\": \"integer\",\n                    \"minimum\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Wall\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Opening\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Beam\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Room\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Column\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Shaft\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Stair\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Void\"\n              }\n            }\n          }\n        }\n      ]\n    },\n    \"DecorLayer\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"version\": {\n          \"const\": 1\n        },\n        \"style\": {\n          \"type\": \"string\"\n        },\n        \"materials\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Material\"\n          }\n        },\n        \"presets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/StylePreset\"\n          }\n        },\n        \"surfaces\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Surface\"\n          }\n        },\n        \"furniture\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Furniture\"\n          }\n        },\n        \"cabinets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Cabinet\"\n          }\n        },\n        \"panels\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Panel\"\n          }\n        },\n        \"recesses\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Recess\"\n          }\n        },\n        \"cache\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"level\": {\n                \"type\": \"string\"\n              },\n              \"box\": {\n                \"$ref\": \"#/$defs/Box\"\n              },\n              \"anchor\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"wall\": {\n                    \"type\": \"string\"\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                },\n                \"required\": [\n                  \"wall\",\n                  \"a\",\n                  \"b\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"pose\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"at\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"rot\": {\n                    \"type\": \"number\"\n                  },\n                  \"z\": {\n                    \"type\": \"number\"\n                  }\n                },\n                \"required\": [\n                  \"at\",\n                  \"rot\",\n                  \"z\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"face\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              }\n            },\n            \"required\": [\n              \"box\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"version\",\n        \"style\",\n        \"materials\",\n        \"surfaces\",\n        \"furniture\",\n        \"cabinets\",\n        \"panels\",\n        \"recesses\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"DecorBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceRef\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"wall\": {\n          \"type\": \"string\"\n        },\n        \"side\": {\n          \"anyOf\": [\n            {\n              \"const\": 1\n            },\n            {\n              \"const\": -1\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"wall\",\n        \"side\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceSpan\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"face\": {\n          \"$ref\": \"#/$defs/FaceRef\"\n        },\n        \"s\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        }\n      },\n      \"required\": [\n        \"face\",\n        \"s\",\n        \"z\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Recess\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"kind\": {\n          \"anyOf\": [\n            {\n              \"const\": \"niche\"\n            },\n            {\n              \"const\": \"hole\"\n            }\n          ]\n        },\n        \"host\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                }\n              },\n              \"required\": [\n                \"face\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"panel\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"panel\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"cabinet\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"cabinet\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"rect\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"u\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"z\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"depth\": {\n          \"anyOf\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"const\": \"through\"\n            }\n          ]\n        },\n        \"back\": {\n          \"type\": \"string\"\n        },\n        \"shelves\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"number\"\n          }\n        },\n        \"trim\": {\n          \"type\": \"string\"\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"kind\",\n        \"host\",\n        \"rect\",\n        \"depth\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Cabinet\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"family\": {\n          \"anyOf\": [\n            {\n              \"const\": \"tall\"\n            },\n            {\n              \"const\": \"base\"\n            },\n            {\n              \"const\": \"wall\"\n            }\n          ]\n        },\n        \"place\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"s\": {\n                  \"type\": \"number\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"s\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"at\": {\n                  \"$ref\": \"#/$defs/Vec2\"\n                },\n                \"rot\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"at\",\n                \"rot\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"depth\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"plinth\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"top\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"thickness\": {\n              \"type\": \"number\"\n            },\n            \"overhang\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"material\",\n            \"thickness\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"columns\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetColumn\"\n          }\n        },\n        \"cuts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"u\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"z\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"depth\": {\n                \"anyOf\": [\n                  {\n                    \"const\": \"through\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ]\n              }\n            },\n            \"required\": [\n              \"u\",\n              \"z\",\n              \"depth\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"carcass\": {\n              \"type\": \"string\"\n            },\n            \"front\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"carcass\",\n            \"front\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"handle\": {\n          \"anyOf\": [\n            {\n              \"const\": \"none\"\n            },\n            {\n              \"const\": \"bar\"\n            },\n            {\n              \"const\": \"knob\"\n            },\n            {\n              \"const\": \"edge\"\n            }\n          ]\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"family\",\n        \"place\",\n        \"width\",\n        \"depth\",\n        \"z\",\n        \"columns\",\n        \"materials\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"CabinetColumn\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"cells\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetCell\"\n          }\n        }\n      },\n      \"required\": [\n        \"cells\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"ApplianceType\": {\n      \"anyOf\": [\n        {\n          \"const\": \"fridge\"\n        },\n        {\n          \"const\": \"washer\"\n        },\n        {\n          \"const\": \"dryer\"\n        },\n        {\n          \"const\": \"oven\"\n        },\n        {\n          \"const\": \"steamer\"\n        },\n        {\n          \"const\": \"dishwasher\"\n        },\n        {\n          \"const\": \"microwave\"\n        },\n        {\n          \"const\": \"tv\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"CabinetCell\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"h\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"door\"\n            },\n            {\n              \"const\": \"doors\"\n            },\n            {\n              \"const\": \"drawers\"\n            },\n            {\n              \"const\": \"flap\"\n            },\n            {\n              \"const\": \"open\"\n            },\n            {\n              \"const\": \"void\"\n            },\n            {\n              \"const\": \"appliance\"\n            }\n          ]\n        },\n        \"hinge\": {\n          \"anyOf\": [\n            {\n              \"const\": \"left\"\n            },\n            {\n              \"const\": \"right\"\n            }\n          ]\n        },\n        \"count\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"maximum\": 1000\n        },\n        \"void\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"depth\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"through\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ]\n            },\n            \"top\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"z\": {\n                  \"type\": \"number\"\n                },\n                \"overhang\": {\n                  \"type\": \"number\"\n                },\n                \"material\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"z\"\n              ],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"appliance\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"type\": {\n              \"$ref\": \"#/$defs/ApplianceType\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 3,\n              \"maxItems\": 3\n            }\n          },\n          \"required\": [\n            \"type\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"material\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"type\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Panel\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"feature\"\n            },\n            {\n              \"const\": \"wainscot\"\n            },\n            {\n              \"const\": \"slats\"\n            },\n            {\n              \"const\": \"skirting\"\n            },\n            {\n              \"const\": \"arch\"\n            }\n          ]\n        },\n        \"span\": {\n          \"$ref\": \"#/$defs/FaceSpan\"\n        },\n        \"opening\": {\n          \"type\": \"string\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"grooves\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"dir\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"v\"\n                },\n                {\n                  \"const\": \"h\"\n                }\n              ]\n            },\n            \"spacing\": {\n              \"type\": \"number\"\n            },\n            \"width\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"dir\",\n            \"spacing\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"frame\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"style\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"flat\"\n                },\n                {\n                  \"const\": \"raised\"\n                }\n              ]\n            },\n            \"margin\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"style\",\n            \"margin\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"slats\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"width\": {\n              \"type\": \"number\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            },\n            \"depth\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"width\",\n            \"gap\",\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"arch\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"radius\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"avoid\": {\n          \"anyOf\": [\n            {\n              \"const\": \"openings\"\n            },\n            {\n              \"const\": \"none\"\n            }\n          ]\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"thickness\",\n        \"material\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Furniture\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"at\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"rot\": {\n              \"type\": \"number\"\n            },\n            \"in\": false\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"at\",\n            \"rot\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"in\": {\n              \"type\": \"string\"\n            },\n            \"at\": false,\n            \"rot\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"in\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"FurnitureBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"type\": {\n          \"type\": \"string\"\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"against\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"face\",\n            \"gap\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"body\": {\n              \"type\": \"string\"\n            },\n            \"fabric\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"size\",\n        \"height\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialCategory\": {\n      \"anyOf\": [\n        {\n          \"const\": \"wood-floor\"\n        },\n        {\n          \"const\": \"tile\"\n        },\n        {\n          \"const\": \"stone\"\n        },\n        {\n          \"const\": \"paint\"\n        },\n        {\n          \"const\": \"texture-paint\"\n        },\n        {\n          \"const\": \"wallpaper\"\n        },\n        {\n          \"const\": \"veneer\"\n        },\n        {\n          \"const\": \"microcement\"\n        },\n        {\n          \"const\": \"laminate\"\n        },\n        {\n          \"const\": \"fabric\"\n        },\n        {\n          \"const\": \"leather\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"glass\"\n        },\n        {\n          \"const\": \"rattan\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"Material\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"$ref\": \"#/$defs/MaterialCategory\"\n        },\n        \"color\": {\n          \"type\": \"string\",\n          \"pattern\": \"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$\"\n        },\n        \"texture\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"kind\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"planks\"\n                },\n                {\n                  \"const\": \"tiles\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"grain\"\n                },\n                {\n                  \"const\": \"speckle\"\n                },\n                {\n                  \"const\": \"veins\"\n                },\n                {\n                  \"const\": \"weave\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"kind\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"pbr\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"roughness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"metalness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"sheen\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"maps\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"base\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"normal\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"rough\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"ref\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"category\",\n        \"color\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialRole\": {\n      \"anyOf\": [\n        {\n          \"const\": \"floor.main\"\n        },\n        {\n          \"const\": \"floor.wet\"\n        },\n        {\n          \"const\": \"floor.outdoor\"\n        },\n        {\n          \"const\": \"threshold\"\n        },\n        {\n          \"const\": \"wall.main\"\n        },\n        {\n          \"const\": \"wall.wet\"\n        },\n        {\n          \"const\": \"wall.accent\"\n        },\n        {\n          \"const\": \"ceiling\"\n        },\n        {\n          \"const\": \"skirting\"\n        },\n        {\n          \"const\": \"wood.main\"\n        },\n        {\n          \"const\": \"cabinet.front\"\n        },\n        {\n          \"const\": \"cabinet.carcass\"\n        },\n        {\n          \"const\": \"stone.top\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"fabric.main\"\n        },\n        {\n          \"const\": \"fabric.accent\"\n        },\n        {\n          \"const\": \"rug\"\n        }\n      ]\n    },\n    \"StylePreset\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"blurb\": {\n          \"type\": \"string\"\n        },\n        \"roles\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"string\"\n          }\n        },\n        \"rooms\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"match\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"floor\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              },\n              \"wall\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              }\n            },\n            \"required\": [\n              \"match\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"trims\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"skirting\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"height\": {\n                  \"type\": \"number\"\n                },\n                \"role\": {\n                  \"$ref\": \"#/$defs/MaterialRole\"\n                }\n              },\n              \"required\": [\n                \"height\",\n                \"role\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"threshold\": {\n              \"type\": \"boolean\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"board\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"builtin\"\n            },\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"roles\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"SurfaceTarget\": {\n      \"anyOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"floor\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"floor\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"ceiling\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"ceiling\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"face\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"Surface\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"target\": {\n          \"$ref\": \"#/$defs/SurfaceTarget\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"layout\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"pattern\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"straight\"\n                },\n                {\n                  \"const\": \"staggered\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"chevron\"\n                },\n                {\n                  \"const\": \"grid\"\n                },\n                {\n                  \"const\": \"diagonal\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"origin\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"angle\": {\n              \"type\": \"number\"\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"pattern\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"target\",\n        \"material\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Decor\": {\n      \"$ref\": \"#/$defs/DecorLayer\"\n    }\n  }\n}\n");
+	writeFileSync("schema/plan.schema.json", "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"urn:floorplan-structure:v3\",\n  \"title\": \"户型结构方案 v3（全部长度 mm）\",\n  \"description\": \"所有长度含高度均为 mm；像素坐标为 px、角度为度、面积为 m²、panes.width 为比例。legacy 是不透明旧格式快照，不参与 v3 换算。\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"decor\": {\n      \"$ref\": \"#/$defs/Decor\"\n    },\n    \"format\": {\n      \"const\": \"floorplan-structure\"\n    },\n    \"version\": {\n      \"const\": 3\n    },\n    \"title\": {\n      \"type\": \"string\"\n    },\n    \"ceiling\": {\n      \"type\": \"number\",\n      \"exclusiveMinimum\": 0\n    },\n    \"north\": {\n      \"type\": \"number\"\n    },\n    \"levels\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Level\"\n      },\n      \"minItems\": 1\n    },\n    \"columns\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Column\"\n      }\n    },\n    \"shafts\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Shaft\"\n      }\n    },\n    \"stairs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Stair\"\n      }\n    },\n    \"voids\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Void\"\n      }\n    },\n    \"levelUnderlays\": {\n      \"type\": \"object\",\n      \"additionalProperties\": {\n        \"$ref\": \"#/$defs/Underlay\"\n      }\n    },\n    \"walls\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Wall\"\n      }\n    },\n    \"openings\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Opening\"\n      }\n    },\n    \"beams\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Beam\"\n      }\n    },\n    \"rooms\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Room\"\n      }\n    },\n    \"underlay\": {\n      \"$ref\": \"#/$defs/Underlay\"\n    },\n    \"questions\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Question\"\n      }\n    },\n    \"changes\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Change\"\n      }\n    },\n    \"legacy\": {\n      \"type\": \"object\",\n      \"additionalProperties\": true\n    },\n    \"meta\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"planFile\": {\n          \"type\": \"string\"\n        },\n        \"source\": {\n          \"type\": \"string\"\n        },\n        \"createdAt\": {\n          \"type\": \"string\"\n        },\n        \"updatedAt\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\n    \"format\",\n    \"version\",\n    \"title\",\n    \"ceiling\",\n    \"walls\",\n    \"openings\",\n    \"beams\",\n    \"rooms\",\n    \"questions\",\n    \"changes\"\n  ],\n  \"additionalProperties\": false,\n  \"$defs\": {\n    \"Vec2\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 2,\n      \"maxItems\": 2\n    },\n    \"Box\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 4,\n      \"maxItems\": 4\n    },\n    \"Certainty\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"seen\",\n        \"inferred\",\n        \"unknown\"\n      ]\n    },\n    \"WallKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"exterior\",\n        \"bearing\",\n        \"partition\",\n        \"glass\",\n        \"half\",\n        \"half-glass\"\n      ]\n    },\n    \"OpeningKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"door\",\n        \"sliding\",\n        \"doorway\",\n        \"window\",\n        \"floor-window\",\n        \"bay-window\",\n        \"open-balcony\"\n      ]\n    },\n    \"PaneKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"fixed\",\n        \"casement\",\n        \"sliding\"\n      ]\n    },\n    \"Evidence\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"basis\": {\n          \"type\": \"string\"\n        },\n        \"pixelBox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"confirmed\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            },\n            \"note\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"certainty\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Wall\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/WallKind\"\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"lowHeight\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"bulge\": {\n          \"type\": \"number\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"thickness\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Opening\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"wall\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"offset\": {\n          \"type\": \"number\",\n          \"minimum\": 0\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/OpeningKind\"\n        },\n        \"sill\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"head\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"swing\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"hinge\": {\n              \"type\": \"string\",\n              \"enum\": [\n                \"start\",\n                \"end\"\n              ]\n            },\n            \"side\": {\n              \"enum\": [\n                1,\n                -1\n              ]\n            }\n          },\n          \"required\": [\n            \"hinge\",\n            \"side\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"panes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"width\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"kind\": {\n                \"$ref\": \"#/$defs/PaneKind\"\n              }\n            },\n            \"required\": [\n              \"width\",\n              \"kind\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"minItems\": 1\n        },\n        \"entry\": {\n          \"type\": \"boolean\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"wall\",\n        \"offset\",\n        \"width\",\n        \"kind\",\n        \"sill\",\n        \"head\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Beam\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"bottom\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"width\",\n        \"bottom\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Room\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"floorOffset\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"use\": {\n          \"type\": \"string\"\n        },\n        \"counted\": {\n          \"type\": \"boolean\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Level\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"elevation\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"elevation\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Column\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"center\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"shape\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"rect\",\n            \"round\"\n          ]\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"bearing\",\n            \"decorative\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"center\",\n        \"shape\",\n        \"size\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Shaft\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"flue\",\n            \"pipe\",\n            \"vent\",\n            \"other\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"poly\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Stair\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"to\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"path\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 2\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"straight\",\n            \"L\",\n            \"U\",\n            \"spiral\"\n          ]\n        },\n        \"steps\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"to\",\n        \"poly\",\n        \"path\",\n        \"width\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Void\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Underlay\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"src\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"pattern\": \"^(?:(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]{2}).+|data:image/(?:png|jpe?g|webp|gif|bmp|avif);base64,.+|data:image/svg\\\\+xml(?:;charset=utf-8)?(?:;base64)?,.+)$\"\n        },\n        \"mmPerPx\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"mmPerPxY\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"origin\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"flipX\": {\n          \"type\": \"boolean\"\n        },\n        \"flipY\": {\n          \"type\": \"boolean\"\n        },\n        \"opacity\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 100\n        },\n        \"visible\": {\n          \"type\": \"boolean\"\n        },\n        \"calibrations\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"p1\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"p2\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"length\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"note\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"p1\",\n              \"p2\",\n              \"length\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"src\",\n        \"mmPerPx\",\n        \"origin\",\n        \"opacity\",\n        \"visible\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionStatus\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"open\",\n        \"answered\",\n        \"resolved\"\n      ]\n    },\n    \"QuestionOutcome\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"changed\",\n        \"confirmed\",\n        \"inferred\",\n        \"noted\",\n        \"ask\",\n        \"withdrawn\"\n      ]\n    },\n    \"QuestionReply\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"outcome\",\n        \"text\",\n        \"by\",\n        \"at\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionLogEntry\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"role\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        },\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      },\n      \"required\": [\n        \"role\",\n        \"text\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Question\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"original\",\n            \"renovation\"\n          ]\n        },\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"bbox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"targets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"options\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"answer\": {\n          \"type\": \"string\"\n        },\n        \"answeredBy\": {\n          \"type\": \"string\"\n        },\n        \"answeredAt\": {\n          \"type\": \"string\"\n        },\n        \"status\": {\n          \"$ref\": \"#/$defs/QuestionStatus\"\n        },\n        \"reply\": {\n          \"$ref\": \"#/$defs/QuestionReply\"\n        },\n        \"log\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/QuestionLogEntry\"\n          }\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"text\",\n        \"category\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Change\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"op\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"add\",\n            \"remove\",\n            \"update\"\n          ]\n        },\n        \"type\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"wall\",\n            \"opening\",\n            \"beam\",\n            \"room\",\n            \"column\",\n            \"shaft\",\n            \"stair\",\n            \"void\"\n          ]\n        },\n        \"target\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"data\": {\n          \"type\": \"object\"\n        },\n        \"range\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"group\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"status\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"pending\",\n            \"confirmed\"\n          ]\n        },\n        \"confirm\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"op\",\n        \"type\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false,\n      \"allOf\": [\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          },\n          \"else\": {\n            \"required\": [\n              \"target\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"thickness\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/WallKind\"\n                  },\n                  \"height\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"lowHeight\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"bulge\": {\n                    \"type\": \"number\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"wall\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"offset\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/OpeningKind\"\n                  },\n                  \"sill\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"head\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"swing\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"hinge\": {\n                        \"type\": \"string\",\n                        \"enum\": [\n                          \"start\",\n                          \"end\"\n                        ]\n                      },\n                      \"side\": {\n                        \"enum\": [\n                          1,\n                          -1\n                        ]\n                      }\n                    },\n                    \"required\": [\n                      \"hinge\",\n                      \"side\"\n                    ],\n                    \"additionalProperties\": false\n                  },\n                  \"panes\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"width\": {\n                          \"type\": \"number\",\n                          \"exclusiveMinimum\": 0\n                        },\n                        \"kind\": {\n                          \"$ref\": \"#/$defs/PaneKind\"\n                        }\n                      },\n                      \"required\": [\n                        \"width\",\n                        \"kind\"\n                      ],\n                      \"additionalProperties\": false\n                    },\n                    \"minItems\": 1\n                  },\n                  \"entry\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"bottom\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"ceiling\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"floorOffset\": {\n                    \"type\": \"number\",\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"use\": {\n                    \"type\": \"string\"\n                  },\n                  \"counted\": {\n                    \"type\": \"boolean\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"center\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"shape\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"rect\",\n                      \"round\"\n                    ]\n                  },\n                  \"size\": {\n                    \"type\": \"array\",\n                    \"prefixItems\": [\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      },\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      }\n                    ],\n                    \"minItems\": 2,\n                    \"maxItems\": 2\n                  },\n                  \"rotation\": {\n                    \"type\": \"number\"\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"bearing\",\n                      \"decorative\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"flue\",\n                      \"pipe\",\n                      \"vent\",\n                      \"other\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"to\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"path\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 2\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"straight\",\n                      \"L\",\n                      \"U\",\n                      \"spiral\"\n                    ]\n                  },\n                  \"steps\": {\n                    \"type\": \"integer\",\n                    \"minimum\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Wall\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Opening\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Beam\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Room\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Column\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Shaft\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Stair\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Void\"\n              }\n            }\n          }\n        }\n      ]\n    },\n    \"DecorLayer\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"version\": {\n          \"const\": 1\n        },\n        \"style\": {\n          \"type\": \"string\"\n        },\n        \"materials\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Material\"\n          }\n        },\n        \"presets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/StylePreset\"\n          }\n        },\n        \"components\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CustomComponent\"\n          }\n        },\n        \"surfaces\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Surface\"\n          }\n        },\n        \"furniture\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Furniture\"\n          }\n        },\n        \"doors\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/DoorFinish\"\n          }\n        },\n        \"cabinets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Cabinet\"\n          }\n        },\n        \"panels\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Panel\"\n          }\n        },\n        \"recesses\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Recess\"\n          }\n        },\n        \"cache\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"level\": {\n                \"type\": \"string\"\n              },\n              \"box\": {\n                \"$ref\": \"#/$defs/Box\"\n              },\n              \"anchor\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"wall\": {\n                    \"type\": \"string\"\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                },\n                \"required\": [\n                  \"wall\",\n                  \"a\",\n                  \"b\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"pose\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"at\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"rot\": {\n                    \"type\": \"number\"\n                  },\n                  \"z\": {\n                    \"type\": \"number\"\n                  }\n                },\n                \"required\": [\n                  \"at\",\n                  \"rot\",\n                  \"z\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"face\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              }\n            },\n            \"required\": [\n              \"box\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"version\",\n        \"style\",\n        \"materials\",\n        \"surfaces\",\n        \"furniture\",\n        \"cabinets\",\n        \"panels\",\n        \"recesses\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"DecorBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceRef\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"wall\": {\n          \"type\": \"string\"\n        },\n        \"side\": {\n          \"anyOf\": [\n            {\n              \"const\": 1\n            },\n            {\n              \"const\": -1\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"wall\",\n        \"side\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceSpan\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"face\": {\n          \"$ref\": \"#/$defs/FaceRef\"\n        },\n        \"s\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        }\n      },\n      \"required\": [\n        \"face\",\n        \"s\",\n        \"z\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Recess\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"kind\": {\n          \"anyOf\": [\n            {\n              \"const\": \"niche\"\n            },\n            {\n              \"const\": \"hole\"\n            }\n          ]\n        },\n        \"host\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                }\n              },\n              \"required\": [\n                \"face\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"panel\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"panel\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"cabinet\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"cabinet\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"rect\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"u\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"z\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"depth\": {\n          \"anyOf\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"const\": \"through\"\n            }\n          ]\n        },\n        \"back\": {\n          \"type\": \"string\"\n        },\n        \"shelves\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"number\"\n          }\n        },\n        \"trim\": {\n          \"type\": \"string\"\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"kind\",\n        \"host\",\n        \"rect\",\n        \"depth\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Cabinet\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"family\": {\n          \"anyOf\": [\n            {\n              \"const\": \"tall\"\n            },\n            {\n              \"const\": \"base\"\n            },\n            {\n              \"const\": \"wall\"\n            }\n          ]\n        },\n        \"place\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"s\": {\n                  \"type\": \"number\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"s\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"at\": {\n                  \"$ref\": \"#/$defs/Vec2\"\n                },\n                \"rot\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"at\",\n                \"rot\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"depth\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"plinth\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"top\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"thickness\": {\n              \"type\": \"number\"\n            },\n            \"overhang\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"material\",\n            \"thickness\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"columns\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetColumn\"\n          }\n        },\n        \"cuts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"u\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"z\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"depth\": {\n                \"anyOf\": [\n                  {\n                    \"const\": \"through\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ]\n              }\n            },\n            \"required\": [\n              \"u\",\n              \"z\",\n              \"depth\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"carcass\": {\n              \"type\": \"string\"\n            },\n            \"front\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"carcass\",\n            \"front\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"handle\": {\n          \"anyOf\": [\n            {\n              \"const\": \"none\"\n            },\n            {\n              \"const\": \"bar\"\n            },\n            {\n              \"const\": \"knob\"\n            },\n            {\n              \"const\": \"edge\"\n            }\n          ]\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"family\",\n        \"place\",\n        \"width\",\n        \"depth\",\n        \"z\",\n        \"columns\",\n        \"materials\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"CabinetColumn\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"cells\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetCell\"\n          }\n        }\n      },\n      \"required\": [\n        \"cells\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"ApplianceType\": {\n      \"anyOf\": [\n        {\n          \"const\": \"fridge\"\n        },\n        {\n          \"const\": \"washer\"\n        },\n        {\n          \"const\": \"dryer\"\n        },\n        {\n          \"const\": \"oven\"\n        },\n        {\n          \"const\": \"steamer\"\n        },\n        {\n          \"const\": \"dishwasher\"\n        },\n        {\n          \"const\": \"microwave\"\n        },\n        {\n          \"const\": \"tv\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"CabinetCell\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"h\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"door\"\n            },\n            {\n              \"const\": \"doors\"\n            },\n            {\n              \"const\": \"drawers\"\n            },\n            {\n              \"const\": \"flap\"\n            },\n            {\n              \"const\": \"open\"\n            },\n            {\n              \"const\": \"void\"\n            },\n            {\n              \"const\": \"appliance\"\n            }\n          ]\n        },\n        \"hinge\": {\n          \"anyOf\": [\n            {\n              \"const\": \"left\"\n            },\n            {\n              \"const\": \"right\"\n            }\n          ]\n        },\n        \"count\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"maximum\": 1000\n        },\n        \"void\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"depth\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"through\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ]\n            },\n            \"top\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"z\": {\n                  \"type\": \"number\"\n                },\n                \"overhang\": {\n                  \"type\": \"number\"\n                },\n                \"material\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"z\"\n              ],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"appliance\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"type\": {\n              \"$ref\": \"#/$defs/ApplianceType\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 3,\n              \"maxItems\": 3\n            }\n          },\n          \"required\": [\n            \"type\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"material\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"type\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Panel\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"feature\"\n            },\n            {\n              \"const\": \"wainscot\"\n            },\n            {\n              \"const\": \"slats\"\n            },\n            {\n              \"const\": \"skirting\"\n            },\n            {\n              \"const\": \"arch\"\n            }\n          ]\n        },\n        \"span\": {\n          \"$ref\": \"#/$defs/FaceSpan\"\n        },\n        \"opening\": {\n          \"type\": \"string\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"grooves\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"dir\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"v\"\n                },\n                {\n                  \"const\": \"h\"\n                }\n              ]\n            },\n            \"spacing\": {\n              \"type\": \"number\"\n            },\n            \"width\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"dir\",\n            \"spacing\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"frame\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"style\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"flat\"\n                },\n                {\n                  \"const\": \"raised\"\n                }\n              ]\n            },\n            \"margin\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"style\",\n            \"margin\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"slats\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"width\": {\n              \"type\": \"number\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            },\n            \"depth\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"width\",\n            \"gap\",\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"arch\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"radius\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"avoid\": {\n          \"anyOf\": [\n            {\n              \"const\": \"openings\"\n            },\n            {\n              \"const\": \"none\"\n            }\n          ]\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"thickness\",\n        \"material\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Furniture\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"flip\": {\n              \"type\": \"boolean\"\n            },\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"prev\": {\n              \"type\": \"object\",\n              \"additionalProperties\": {}\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"look\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"at\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"rot\": {\n              \"type\": \"number\"\n            },\n            \"in\": false\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"at\",\n            \"rot\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"flip\": {\n              \"type\": \"boolean\"\n            },\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"prev\": {\n              \"type\": \"object\",\n              \"additionalProperties\": {}\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"look\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"in\": {\n              \"type\": \"string\"\n            },\n            \"at\": false,\n            \"rot\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"in\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"FurnitureBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"flip\": {\n          \"type\": \"boolean\"\n        },\n        \"type\": {\n          \"type\": \"string\"\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"against\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"face\",\n            \"gap\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"body\": {\n              \"type\": \"string\"\n            },\n            \"fabric\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"size\",\n        \"height\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialCategory\": {\n      \"anyOf\": [\n        {\n          \"const\": \"wood-floor\"\n        },\n        {\n          \"const\": \"tile\"\n        },\n        {\n          \"const\": \"stone\"\n        },\n        {\n          \"const\": \"paint\"\n        },\n        {\n          \"const\": \"texture-paint\"\n        },\n        {\n          \"const\": \"wallpaper\"\n        },\n        {\n          \"const\": \"veneer\"\n        },\n        {\n          \"const\": \"microcement\"\n        },\n        {\n          \"const\": \"laminate\"\n        },\n        {\n          \"const\": \"fabric\"\n        },\n        {\n          \"const\": \"leather\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"glass\"\n        },\n        {\n          \"const\": \"rattan\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"Material\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"$ref\": \"#/$defs/MaterialCategory\"\n        },\n        \"color\": {\n          \"type\": \"string\",\n          \"pattern\": \"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$\"\n        },\n        \"texture\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"kind\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"planks\"\n                },\n                {\n                  \"const\": \"tiles\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"grain\"\n                },\n                {\n                  \"const\": \"speckle\"\n                },\n                {\n                  \"const\": \"veins\"\n                },\n                {\n                  \"const\": \"weave\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"kind\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"pbr\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"roughness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"metalness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"sheen\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"maps\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"base\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"normal\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"rough\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"ref\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"category\",\n        \"color\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialRole\": {\n      \"anyOf\": [\n        {\n          \"const\": \"floor.main\"\n        },\n        {\n          \"const\": \"floor.wet\"\n        },\n        {\n          \"const\": \"floor.outdoor\"\n        },\n        {\n          \"const\": \"threshold\"\n        },\n        {\n          \"const\": \"wall.main\"\n        },\n        {\n          \"const\": \"wall.wet\"\n        },\n        {\n          \"const\": \"wall.accent\"\n        },\n        {\n          \"const\": \"ceiling\"\n        },\n        {\n          \"const\": \"skirting\"\n        },\n        {\n          \"const\": \"wood.main\"\n        },\n        {\n          \"const\": \"cabinet.front\"\n        },\n        {\n          \"const\": \"cabinet.carcass\"\n        },\n        {\n          \"const\": \"stone.top\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"fabric.main\"\n        },\n        {\n          \"const\": \"fabric.accent\"\n        },\n        {\n          \"const\": \"rug\"\n        }\n      ]\n    },\n    \"StylePreset\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"blurb\": {\n          \"type\": \"string\"\n        },\n        \"roles\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"string\"\n          }\n        },\n        \"rooms\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"match\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"floor\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              },\n              \"wall\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              }\n            },\n            \"required\": [\n              \"match\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"trims\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"skirting\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"height\": {\n                  \"type\": \"number\"\n                },\n                \"role\": {\n                  \"$ref\": \"#/$defs/MaterialRole\"\n                }\n              },\n              \"required\": [\n                \"height\",\n                \"role\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"threshold\": {\n              \"type\": \"boolean\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"board\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"builtin\"\n            },\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"roles\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"SurfaceTarget\": {\n      \"anyOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"floor\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"floor\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"ceiling\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"ceiling\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"face\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"Surface\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"target\": {\n          \"$ref\": \"#/$defs/SurfaceTarget\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"layout\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"pattern\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"straight\"\n                },\n                {\n                  \"const\": \"staggered\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"chevron\"\n                },\n                {\n                  \"const\": \"grid\"\n                },\n                {\n                  \"const\": \"diagonal\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"origin\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"angle\": {\n              \"type\": \"number\"\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"pattern\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"target\",\n        \"material\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Decor\": {\n      \"$ref\": \"#/$defs/DecorLayer\"\n    },\n    \"ComponentCategory\": {\n      \"anyOf\": [\n        {\n          \"const\": \"furniture\"\n        },\n        {\n          \"const\": \"appliance\"\n        },\n        {\n          \"const\": \"sanitary\"\n        },\n        {\n          \"const\": \"lighting\"\n        },\n        {\n          \"const\": \"ceiling\"\n        },\n        {\n          \"const\": \"plant\"\n        },\n        {\n          \"const\": \"soft\"\n        },\n        {\n          \"const\": \"storage\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"ComponentPath\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"d\": {\n          \"type\": \"string\"\n        },\n        \"style\": {\n          \"anyOf\": [\n            {\n              \"const\": \"outline\"\n            },\n            {\n              \"const\": \"detail\"\n            },\n            {\n              \"const\": \"dashed\"\n            }\n          ]\n        },\n        \"fill\": {\n          \"type\": \"string\"\n        },\n        \"stroke\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"d\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"ComponentPartBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [],\n      \"additionalProperties\": false\n    },\n    \"ComponentPart\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"extrude\"\n            },\n            \"outline\": {\n              \"type\": \"string\"\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"outline\",\n            \"z\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"side\"\n            },\n            \"along\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"width\"\n                },\n                {\n                  \"const\": \"depth\"\n                }\n              ]\n            },\n            \"profile\": {\n              \"type\": \"string\"\n            },\n            \"span\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"kind\",\n            \"along\",\n            \"profile\",\n            \"span\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"revolve\"\n            },\n            \"profile\": {\n              \"type\": \"string\"\n            },\n            \"center\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            }\n          },\n          \"required\": [\n            \"kind\",\n            \"profile\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"CustomComponent\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"$ref\": \"#/$defs/ComponentCategory\"\n        },\n        \"label\": {\n          \"type\": \"string\"\n        },\n        \"basis\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"height\": {\n          \"type\": \"number\"\n        },\n        \"plan\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"front\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"parts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPart\"\n          }\n        },\n        \"seg\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"category\",\n        \"size\",\n        \"height\",\n        \"parts\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"DoorFinish\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"opening\": {\n          \"type\": \"string\"\n        },\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"frame\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"front\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"flip\": {\n          \"type\": \"boolean\"\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"opening\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    }\n  }\n}\n");
 }));
 // scripts/plan.ts
 var [command, input, output, ...flags] = process.argv.slice(2);
@@ -16932,6 +18131,8 @@ else try {
 		"apply",
 		"stats",
 		"decor",
+		"decor-edit",
+		"decor-list",
 		"export",
 		"render",
 		"cameras",
@@ -16943,7 +18144,8 @@ else try {
 		"export",
 		"render",
 		"answer",
-		"resolve"
+		"resolve",
+		"decor-edit"
 	].includes(command) && !output) throw new Error("用法：先设置 $SKILL 为 Skill 根目录的绝对路径，$WORK 为用户工作目录的绝对路径；在 $WORK 执行，输入输出用全路径。\nSKILL=\"/绝对路径/see-your-home\"\nWORK=\"/用户的/工作目录\"\ncd \"$WORK\"\n" + [
 		"schema",
 		"cameras \"$WORK/方案.json\" [--json] [--all] [--state original|renovated] [--level id]",
@@ -16951,18 +18153,26 @@ else try {
 		"validate \"$WORK/方案.json\"",
 		"apply \"$WORK/方案.json\"",
 		"stats \"$WORK/方案.json\"",
-		"decor \"$WORK/方案.json\"",
+		"decor \"$WORK/方案.json\" [--brief]（--brief 只看每项挂得上挂不上和问题）",
+		"decor-edit \"$WORK/方案.json\" <补丁.json|->（原地原子写入 v3，只改 decor；add kind 含 door；furniture 可用 ceiling:{room} 或 wall；item/定义可写 look）",
+		"decor-list \"$WORK/方案.json\"（只读查询家具、风格、材料、构件、门外观 doors、房间墙面及 openings[].door）",
 		"questions \"$WORK/方案.json\" [--status open|answered|resolved]",
 		"answer \"$WORK/方案.json\" <问题id> --text \"答复\" [--by 业主] [--at YYYY-MM-DD]（原地写入 v3）",
 		"resolve \"$WORK/方案.json\" <问题id> --outcome changed|confirmed|inferred|noted|ask|withdrawn --reply \"回复\" [--changed id,id] [--by Agent] [--at YYYY-MM-DD]（原地写入 v3）",
 		"export \"$WORK/方案.json\" \"$WORK/输出.glb\" [--state original|renovated] [--level id]",
-		"render \"$WORK/方案.json\" \"$WORK/输出目录\" [--camera 预设|room:id|\"$WORK/相机.json\"（可重复）] [--cameras \"$WORK/列表.json\"] [--state original|renovated] [--views iso-sw,iso-ne,iso-se,iso-nw,top] [--level id] [--section mm] [--passes clay,depth,lines,seg,openings] [--size 2400x1600] [--transparent] [--no-decor]",
+		"render \"$WORK/方案.json\" \"$WORK/输出目录\" [--camera 预设|room:id|\"$WORK/相机.json\"（可重复）] [--cameras \"$WORK/列表.json\"] [--state original|renovated] [--views iso-sw,iso-ne,iso-se,iso-nw,top] [--level id] [--section mm] [--passes clay,depth,lines,seg,openings] [--size 2400x1600] [--transparent] [--no-decor] [--include-pending]",
 		"render \"$WORK/方案.json\" \"$WORK/输出目录\" --camera \"pos=2000,1450,1000;target=2000,1450,4000;fov=75\""
 	].map((line) => "node \"$SKILL/scripts/plan-cli.mjs\" " + line).join("\n"));
 	const source = readFileSync(input === "-" ? 0 : input, "utf8");
-	const { plan, report, issues } = parsePlanText(source);
+	const { plan, report, issues } = parsePlanText$1(source, { allowUnknownOutsideDecor: command === "decor-edit" || command === "decor-list" });
 	if (issues.some((i) => i.code === "parse" || i.code === "schema") && command !== "validate") throw new Error(issues.map((i) => i.message).join("\n"));
-	if (command === "questions" || command === "answer" || command === "resolve") {
+	if (command === "decor-edit") {
+		if (flags.length) throw new Error("decor-edit 不接受额外参数");
+		process.stdout.write(JSON.stringify(editDecorFile(input, source, JSON.parse(readFileSync(output === "-" ? 0 : output, "utf8"))), null, 2) + "\n");
+	} else if (command === "decor-list") {
+		if (output || flags.length) throw new Error("decor-list 只需要方案路径");
+		process.stdout.write(JSON.stringify(listDecor(plan), null, 2) + "\n");
+	} else if (command === "questions" || command === "answer" || command === "resolve") {
 		const args = command === "questions" ? [output, ...flags].filter((v) => v !== void 0) : flags;
 		const allowed = command === "questions" ? ["--status"] : command === "answer" ? [
 			"--text",
@@ -17028,7 +18238,7 @@ else try {
 				});
 			}
 			raw.questions[index] = next;
-			const text = JSON.stringify(raw, null, 2) + "\n", errors = parsePlanText(text).issues.filter((i) => i.level === "error");
+			const text = JSON.stringify(raw, null, 2) + "\n", errors = parsePlanText$1(text).issues.filter(blocksPersistence);
 			if (errors.length) throw new Error(`修改后的方案校验未通过，文件未写入：\n${errors.map((i) => i.message).join("\n")}`);
 			const temp = join(dirname(input), `.${basename(input)}.${randomUUID()}.tmp`);
 			let fd;
@@ -17047,7 +18257,8 @@ else try {
 			process.stdout.write(JSON.stringify(card) + "\n");
 		}
 	} else if (command === "export" || command === "render" || command === "cameras") {
-		if (issues.some((i) => i.level === "error")) throw new Error(issues.filter((i) => i.level === "error").map((i) => i.message).join("\n"));
+		if (issues.some(blocksPersistence)) throw new Error(issues.filter(blocksPersistence).map((i) => i.message).join("\n"));
+		for (const i of issues) if (i.level === "error") process.stderr.write(`提示：${i.message}（数据还在，这一项图和模型里没有）\n`);
 		let all = false, json = false;
 		const cameras = [];
 		const addCamera = (value) => {
@@ -17079,7 +18290,7 @@ else try {
 			"iso-sw",
 			"iso-ne",
 			"top"
-		], width = 2400, height = 1600, transparent = false, noDecor = false;
+		], width = 2400, height = 1600, transparent = false, noDecor = false, includePending = false;
 		const args = command === "cameras" ? [output, ...flags].filter((v) => v !== void 0) : flags;
 		for (let i = 0; i < args.length; i++) {
 			const flag = args[i];
@@ -17093,7 +18304,8 @@ else try {
 			else if (flag === "--transparent" && command === "render") {
 				transparent = true;
 				transparentSet = true;
-			} else if (flag === "--no-decor" && command === "render") noDecor = true;
+			} else if (flag === "--include-pending" && command === "render") includePending = true;
+			else if (flag === "--no-decor" && command === "render") noDecor = true;
 			else if (flag === "--level") {
 				level = args[++i];
 				if (!level) throw new Error("--level 缺少楼层 id");
@@ -17163,9 +18375,11 @@ else try {
 					height: sizeSet ? height : record.height ?? height,
 					transparent: bg,
 					passes: passes ?? record.passes,
+					includePending,
 					decor: !noDecor && record.decor?.skipped !== "disabled"
 				});
 				const dv = savedCamera.decor;
+				if (dv?.pendingHidden) process.stderr.write(`${dv.pendingHidden} 件待确认没画，加 --include-pending 可以画出来\n`);
 				if (dv?.drawn) process.stderr.write(`装修层：画面里有 ${dv.visible.length} 件（${dv.visible.map((v) => v.name).join("、") || "都在画外或被挡住"}）\n`);
 				else if (dv?.skipped === "original-state") process.stderr.write("装修层：没画。装修是按改造后的格局摆的，原始状态有已确认改造；要带家具出图加 --state renovated\n");
 				else if (dv?.skipped === "error") process.stderr.write(`装修层：没画，装修数据有问题：${dv.error}\n`);
@@ -17186,9 +18400,9 @@ else try {
 			}
 		}
 	} else if (command === "convert") {
-		if (issues.some((i) => i.level === "error")) throw new Error(issues.map((i) => i.message).join("\n"));
+		if (issues.some(blocksPersistence)) throw new Error(issues.map((i) => i.message).join("\n"));
 		if (output !== "-" && output !== "/dev/stdout" && existsSync(output) && isEmptyPlan(plan)) {
-			const old = parsePlanText(readFileSync(output, "utf8"));
+			const old = parsePlanText$1(readFileSync(output, "utf8"));
 			if (loadError(old.issues) || !isEmptyPlan(old.plan)) throw new Error("拒绝用空方案覆盖含有数据或无法读取的旧文件");
 		}
 		const text = serializePlan(plan);
@@ -17202,18 +18416,19 @@ else try {
 			approximations: report.approximations.map(agentUnits),
 			warnings: report.warnings.map(agentUnits)
 		}, null, 2) + "\n");
-		if (issues.some((i) => i.level === "error")) process.exitCode = 1;
+		if (issues.some(blocksPersistence)) process.exitCode = 1;
 	} else if (command === "validate") {
 		process.stdout.write(JSON.stringify({
-			valid: !issues.some((i) => i.level === "error"),
+			valid: !issues.some(blocksPersistence),
 			issues: issues.map((i) => ({
 				...i,
+				level: i.level === "error" && !blocksPersistence(i) ? "warn" : i.level,
 				message: agentUnits(i.message)
 			}))
 		}, null, 2) + "\n");
-		if (issues.some((i) => i.level === "error")) process.exitCode = 1;
+		if (issues.some(blocksPersistence)) process.exitCode = 1;
 	} else if (command === "apply") {
-		if (issues.some((i) => i.level === "error")) throw new Error(issues.map((i) => i.message).join("\n"));
+		if (issues.some(blocksPersistence)) throw new Error(issues.map((i) => i.message).join("\n"));
 		const replay = applyChanges(plan, plan.changes), after = validateReplay(replay, plan.changes, plan);
 		process.stdout.write(JSON.stringify({
 			results: replay.results.map((r) => ({
@@ -17223,10 +18438,11 @@ else try {
 			})),
 			issues: after.map((i) => ({
 				...i,
+				level: i.level === "error" && !blocksPersistence(i) ? "warn" : i.level,
 				message: agentUnits(i.message)
 			}))
 		}, null, 2) + "\n");
-		if (replay.results.some((r) => !r.ok) || after.some((i) => i.level === "error")) process.exitCode = 1;
+		if (replay.results.some((r) => !r.ok) || after.some(blocksPersistence)) process.exitCode = 1;
 	} else if (command === "decor") {
 		const after = plan.legacy?.__structureReplayFrame ? plan : applyChanges(plan, plan.changes.filter((c) => c.status === "confirmed")).plan, resolved = decorStatus(plan);
 		const decor = planFileValue({
@@ -17239,13 +18455,35 @@ else try {
 			item: items.get(i.id),
 			reasons: i.reasons.map(agentUnits)
 		}));
-		process.stdout.write(JSON.stringify({
+		if (output !== void 0 && output !== "--brief") throw new Error(`未知参数：${output}`);
+		if (output === "--brief") process.stdout.write(JSON.stringify({
+			pendingCount: pendingCount(plan.decor),
+			items: resolved.items.map((i) => ({
+				id: i.id,
+				status: i.status,
+				reasons: i.reasons.map(agentUnits)
+			})),
+			issues: resolved.issues.map((i) => ({
+				...i,
+				level: i.level === "error" && !blocksPersistence({
+					level: i.level,
+					code: "decor-" + i.code
+				}) ? "warn" : i.level,
+				text: agentUnits(i.text)
+			}))
+		}, null, 2) + "\n");
+		else process.stdout.write(JSON.stringify({
 			...resolved,
 			decor,
+			pendingCount: pendingCount(plan.decor),
 			items: storedItems(resolved.items),
 			placed: storedItems(resolved.placed),
 			issues: resolved.issues.map((i) => ({
 				...i,
+				level: i.level === "error" && !blocksPersistence({
+					level: i.level,
+					code: "decor-" + i.code
+				}) ? "warn" : i.level,
 				text: agentUnits(i.text)
 			})),
 			rehosted: plan.decor ? planFileValue({
@@ -17257,7 +18495,10 @@ else try {
 				decor: resolved.decor
 			})
 		}, null, 2) + "\n");
-		if (resolved.issues.some((i) => i.level === "error")) process.exitCode = 1;
+		if (resolved.issues.some((i) => blocksPersistence({
+			level: i.level,
+			code: "decor-" + i.code
+		}))) process.exitCode = 1;
 	} else {
 		const stats = planStats(plan);
 		stats.byLevel?.forEach((l) => {

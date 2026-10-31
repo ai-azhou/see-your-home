@@ -1,24 +1,9 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "83a238578810e5b7f108cd9bf4c7a03ff89d8da3",
+  "coreCommit": "59476c2b4a958d3dc8b42b653e8746f9b3796a38",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
-    },
-    "src/core/types.ts": {
-      "renderedLength": 824
-    },
-    "src/core/levels.ts": {
-      "renderedLength": 1769
-    },
-    "src/core/geometry.ts": {
-      "renderedLength": 8185
-    },
-    "src/core/protection.ts": {
-      "renderedLength": 238
-    },
-    "src/core/mirror-frame.ts": {
-      "renderedLength": 857
     },
     "node_modules/splaytree/dist/splaytree.js": {
       "renderedLength": 8264
@@ -44,6 +29,27 @@
     "node_modules/polygon-clipping/dist/polygon-clipping.esm.js": {
       "renderedLength": 36061
     },
+    "src/core/decor/svg-path.ts": {
+      "renderedLength": 6225
+    },
+    "src/core/decor/components.ts": {
+      "renderedLength": 6970
+    },
+    "src/core/types.ts": {
+      "renderedLength": 824
+    },
+    "src/core/levels.ts": {
+      "renderedLength": 1769
+    },
+    "src/core/geometry.ts": {
+      "renderedLength": 8185
+    },
+    "src/core/protection.ts": {
+      "renderedLength": 238
+    },
+    "src/core/mirror-frame.ts": {
+      "renderedLength": 857
+    },
     "src/core/walls.ts": {
       "renderedLength": 2678
     },
@@ -51,22 +57,46 @@
       "renderedLength": 1361
     },
     "src/core/decor/faces.ts": {
-      "renderedLength": 4982
+      "renderedLength": 5100
     },
     "src/core/decor/panels.ts": {
-      "renderedLength": 4052
+      "renderedLength": 4132
+    },
+    "src/core/decor/presets.ts": {
+      "renderedLength": 7261
     },
     "src/core/decor/cabinets.ts": {
-      "renderedLength": 5917
+      "renderedLength": 6779
+    },
+    "src/core/decor/surfaces.ts": {
+      "renderedLength": 14686
+    },
+    "src/core/decor/embed.ts": {
+      "renderedLength": 7020
+    },
+    "src/core/decor/validate.ts": {
+      "renderedLength": 20249
+    },
+    "src/core/decor/integration.ts": {
+      "renderedLength": 1285
+    },
+    "src/core/questions.ts": {
+      "renderedLength": 2220
+    },
+    "src/core/validate.ts": {
+      "renderedLength": 12102
+    },
+    "src/core/changes.ts": {
+      "renderedLength": 13805
+    },
+    "src/core/decor/resolve.ts": {
+      "renderedLength": 17165
     },
     "src/core/decor/furniture.ts": {
-      "renderedLength": 5554
+      "renderedLength": 6832
     },
     "src/core/decor/legacy.ts": {
       "renderedLength": 2751
-    },
-    "src/core/decor/presets.ts": {
-      "renderedLength": 7073
     },
     "node_modules/ajv/dist/compile/codegen/code.js": {
       "renderedLength": 4167
@@ -333,7 +363,7 @@
       "renderedLength": 2835
     },
     "schema/plan.schema.json": {
-      "renderedLength": 39779
+      "renderedLength": 44510
     },
     "src/core/schema.ts": {
       "renderedLength": 500
@@ -342,40 +372,10 @@
       "renderedLength": 16090
     },
     "src/core/simple.ts": {
-      "renderedLength": 19713
+      "renderedLength": 19705
     },
     "src/core/io.ts": {
-      "renderedLength": 7603
-    },
-    "src/core/decor/surfaces.ts": {
-      "renderedLength": 14380
-    },
-    "src/core/decor/embed.ts": {
-      "renderedLength": 7020
-    },
-    "src/core/decor/validate.ts": {
-      "renderedLength": 13933
-    },
-    "src/core/decor/integration.ts": {
-      "renderedLength": 1254
-    },
-    "src/core/questions.ts": {
-      "renderedLength": 2220
-    },
-    "src/core/validate.ts": {
-      "renderedLength": 12102
-    },
-    "src/core/changes.ts": {
-      "renderedLength": 13723
-    },
-    "src/core/decor/resolve.ts": {
-      "renderedLength": 15389
-    },
-    "src/core/persistence.ts": {
-      "renderedLength": 1399
-    },
-    "node_modules/earcut/src/earcut.js": {
-      "renderedLength": 19326
+      "renderedLength": 8678
     },
     "src/core/opening-symbol.ts": {
       "renderedLength": 2878
@@ -383,29 +383,38 @@
     "src/core/solids.ts": {
       "renderedLength": 11853
     },
+    "src/core/merge-rooms.ts": {
+      "renderedLength": 417
+    },
+    "src/core/persistence.ts": {
+      "renderedLength": 1537
+    },
+    "scripts/decor-edit.ts": {
+      "renderedLength": 17539
+    },
+    "node_modules/earcut/src/earcut.js": {
+      "renderedLength": 19326
+    },
     "src/core/mesh.ts": {
-      "renderedLength": 7141
+      "renderedLength": 7132
     },
     "src/core/glb.ts": {
       "renderedLength": 3886
     },
-    "src/core/merge-rooms.ts": {
-      "renderedLength": 417
-    },
     "src/core/decor/solids.ts": {
-      "renderedLength": 7259
+      "renderedLength": 8013
     },
     "src/core/raster.ts": {
-      "renderedLength": 57034
+      "renderedLength": 59129
     },
     "src/core/summary.ts": {
       "renderedLength": 3456
     },
     "schema/generate.ts": {
-      "renderedLength": 91151
+      "renderedLength": 101457
     },
     "scripts/plan.ts": {
-      "renderedLength": 14935
+      "renderedLength": 16982
     }
   },
   "outputs": {
@@ -413,21 +422,6 @@
       "inputs": {
         "rolldown/runtime.js": {
           "renderedLength": 1733
-        },
-        "src/core/types.ts": {
-          "renderedLength": 824
-        },
-        "src/core/levels.ts": {
-          "renderedLength": 1769
-        },
-        "src/core/geometry.ts": {
-          "renderedLength": 8185
-        },
-        "src/core/protection.ts": {
-          "renderedLength": 238
-        },
-        "src/core/mirror-frame.ts": {
-          "renderedLength": 857
         },
         "node_modules/splaytree/dist/splaytree.js": {
           "renderedLength": 8264
@@ -453,6 +447,27 @@
         "node_modules/polygon-clipping/dist/polygon-clipping.esm.js": {
           "renderedLength": 36061
         },
+        "src/core/decor/svg-path.ts": {
+          "renderedLength": 6225
+        },
+        "src/core/decor/components.ts": {
+          "renderedLength": 6970
+        },
+        "src/core/types.ts": {
+          "renderedLength": 824
+        },
+        "src/core/levels.ts": {
+          "renderedLength": 1769
+        },
+        "src/core/geometry.ts": {
+          "renderedLength": 8185
+        },
+        "src/core/protection.ts": {
+          "renderedLength": 238
+        },
+        "src/core/mirror-frame.ts": {
+          "renderedLength": 857
+        },
         "src/core/walls.ts": {
           "renderedLength": 2678
         },
@@ -460,22 +475,46 @@
           "renderedLength": 1361
         },
         "src/core/decor/faces.ts": {
-          "renderedLength": 4982
+          "renderedLength": 5100
         },
         "src/core/decor/panels.ts": {
-          "renderedLength": 4052
+          "renderedLength": 4132
+        },
+        "src/core/decor/presets.ts": {
+          "renderedLength": 7261
         },
         "src/core/decor/cabinets.ts": {
-          "renderedLength": 5917
+          "renderedLength": 6779
+        },
+        "src/core/decor/surfaces.ts": {
+          "renderedLength": 14686
+        },
+        "src/core/decor/embed.ts": {
+          "renderedLength": 7020
+        },
+        "src/core/decor/validate.ts": {
+          "renderedLength": 20249
+        },
+        "src/core/decor/integration.ts": {
+          "renderedLength": 1285
+        },
+        "src/core/questions.ts": {
+          "renderedLength": 2220
+        },
+        "src/core/validate.ts": {
+          "renderedLength": 12102
+        },
+        "src/core/changes.ts": {
+          "renderedLength": 13805
+        },
+        "src/core/decor/resolve.ts": {
+          "renderedLength": 17165
         },
         "src/core/decor/furniture.ts": {
-          "renderedLength": 5554
+          "renderedLength": 6832
         },
         "src/core/decor/legacy.ts": {
           "renderedLength": 2751
-        },
-        "src/core/decor/presets.ts": {
-          "renderedLength": 7073
         },
         "node_modules/ajv/dist/compile/codegen/code.js": {
           "renderedLength": 4167
@@ -742,7 +781,7 @@
           "renderedLength": 2835
         },
         "schema/plan.schema.json": {
-          "renderedLength": 39779
+          "renderedLength": 44510
         },
         "src/core/schema.ts": {
           "renderedLength": 500
@@ -751,40 +790,10 @@
           "renderedLength": 16090
         },
         "src/core/simple.ts": {
-          "renderedLength": 19713
+          "renderedLength": 19705
         },
         "src/core/io.ts": {
-          "renderedLength": 7603
-        },
-        "src/core/decor/surfaces.ts": {
-          "renderedLength": 14380
-        },
-        "src/core/decor/embed.ts": {
-          "renderedLength": 7020
-        },
-        "src/core/decor/validate.ts": {
-          "renderedLength": 13933
-        },
-        "src/core/decor/integration.ts": {
-          "renderedLength": 1254
-        },
-        "src/core/questions.ts": {
-          "renderedLength": 2220
-        },
-        "src/core/validate.ts": {
-          "renderedLength": 12102
-        },
-        "src/core/changes.ts": {
-          "renderedLength": 13723
-        },
-        "src/core/decor/resolve.ts": {
-          "renderedLength": 15389
-        },
-        "src/core/persistence.ts": {
-          "renderedLength": 1399
-        },
-        "node_modules/earcut/src/earcut.js": {
-          "renderedLength": 19326
+          "renderedLength": 8678
         },
         "src/core/opening-symbol.ts": {
           "renderedLength": 2878
@@ -792,36 +801,45 @@
         "src/core/solids.ts": {
           "renderedLength": 11853
         },
+        "src/core/merge-rooms.ts": {
+          "renderedLength": 417
+        },
+        "src/core/persistence.ts": {
+          "renderedLength": 1537
+        },
+        "scripts/decor-edit.ts": {
+          "renderedLength": 17539
+        },
+        "node_modules/earcut/src/earcut.js": {
+          "renderedLength": 19326
+        },
         "src/core/mesh.ts": {
-          "renderedLength": 7141
+          "renderedLength": 7132
         },
         "src/core/glb.ts": {
           "renderedLength": 3886
         },
-        "src/core/merge-rooms.ts": {
-          "renderedLength": 417
-        },
         "src/core/decor/solids.ts": {
-          "renderedLength": 7259
+          "renderedLength": 8013
         },
         "src/core/raster.ts": {
-          "renderedLength": 57034
+          "renderedLength": 59129
         },
         "src/core/summary.ts": {
           "renderedLength": 3456
         },
         "schema/generate.ts": {
-          "renderedLength": 91151
+          "renderedLength": 101457
         },
         "scripts/plan.ts": {
-          "renderedLength": 14935
+          "renderedLength": 16982
         }
       },
       "imports": [
         "node:module",
         "node:fs",
-        "node:crypto",
         "node:path",
+        "node:crypto",
         "node:zlib"
       ],
       "dynamicImports": [
