@@ -1,4 +1,4 @@
-// Shared core base git commit: 59476c2b4a958d3dc8b42b653e8746f9b3796a38; no uncommitted core changes.
+// Shared core base git commit: 2a7947960918d4d07b625b45128333e3e253211a; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -4835,8 +4835,22 @@ function checkElement(plan, type, item) {
 		].includes(item.kind)) return "楼梯类型不认识";
 	}
 }
+/**
+* 重放用的拷贝：底图（内嵌图片，常有 MB 级）和装修层既不参与重放也不会被改，共用同一份，只拷结构。
+* 每条改动都要拷一次才能失败回滚，整份拷的话一次重放要把底图复制几十遍；键的顺序不变，写回文件不产生无关差异。
+*/
+var SHARED_KEYS = /* @__PURE__ */ new Set([
+	"underlay",
+	"levelUnderlays",
+	"decor"
+]);
+function cloneStructure(plan) {
+	const out = {};
+	for (const [k, v] of Object.entries(plan)) out[k] = SHARED_KEYS.has(k) ? v : structuredClone(v);
+	return out;
+}
 function applyChanges(base, changes) {
-	let plan = structuredClone(base);
+	let plan = cloneStructure(base);
 	const results = [], protectedIds = new Set(base.walls.filter((w) => PROTECTED_KINDS.includes(w.kind) || w.evidence?.certainty === "unknown").map((w) => w.id));
 	const isProtected = (w) => !!w && (protectedIds.has(w.id) || PROTECTED_KINDS.includes(w.kind));
 	const bearingColumns = new Set((base.columns ?? []).filter((c) => c.kind === "bearing").map((c) => c.id));
@@ -4846,7 +4860,7 @@ function applyChanges(base, changes) {
 			ok: false,
 			affected: [],
 			removed: []
-		}, next = structuredClone(plan);
+		}, next = cloneStructure(plan);
 		try {
 			const blocked = change.op === "remove" ? shaftRemovalError(next, change.target) : void 0;
 			if (blocked) throw new Error(blocked);

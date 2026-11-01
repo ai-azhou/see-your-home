@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "59476c2b4a958d3dc8b42b653e8746f9b3796a38",
+  "coreCommit": "2a7947960918d4d07b625b45128333e3e253211a",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -87,7 +87,7 @@
       "renderedLength": 12102
     },
     "src/core/changes.ts": {
-      "renderedLength": 13805
+      "renderedLength": 14171
     },
     "src/core/decor/resolve.ts": {
       "renderedLength": 17165
@@ -505,7 +505,7 @@
           "renderedLength": 12102
         },
         "src/core/changes.ts": {
-          "renderedLength": 13805
+          "renderedLength": 14171
         },
         "src/core/decor/resolve.ts": {
           "renderedLength": 17165

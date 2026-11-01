@@ -29,6 +29,9 @@ manual = next((Path(c) for c in candidates if c and (Path(c) / MANUAL_FILES[0]).
 if args.manual and manual != Path(args.manual):
     raise SystemExit(f'找不到手册：{args.manual}')
 
+# The Skill carries its own VERSION; keep it the repository's, or the zip reports an old version.
+(skill / 'VERSION').write_text((root / 'VERSION').read_text(encoding='utf-8'), encoding='utf-8')
+
 references = skill / 'references'
 if manual:
     for name in MANUAL_FILES:
