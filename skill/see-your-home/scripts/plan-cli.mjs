@@ -1,9 +1,9 @@
-// Shared core base git commit: 2a7947960918d4d07b625b45128333e3e253211a; no uncommitted core changes.
+// Shared core base git commit: 33dcc5061eeaf1ab3f0b2c17801141e5f7cc8e14; no uncommitted core changes.
 // Third-party licenses: see THIRD-PARTY-NOTICES.md distributed with this Skill.
 import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { deflateSync } from "node:zlib";
+import zlib, { deflateSync } from "node:zlib";
 // \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
@@ -2202,13 +2202,13 @@ function assertLevel(plan, level) {
 }
 var add = (a, b) => [a[0] + b[0], a[1] + b[1]];
 var sub$1 = (a, b) => [a[0] - b[0], a[1] - b[1]];
-var mul = (a, s) => [a[0] * s, a[1] * s];
+var mul$1 = (a, s) => [a[0] * s, a[1] * s];
 var dot$2 = (a, b) => a[0] * b[0] + a[1] * b[1];
 var distance$1 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 var clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 function wallDir(w) {
 	const d = sub$1(w.b, w.a);
-	return mul(d, 1 / (Math.hypot(...d) || 1));
+	return mul$1(d, 1 / (Math.hypot(...d) || 1));
 }
 function wallNormal(w) {
 	const d = wallDir(w);
@@ -2218,7 +2218,7 @@ function arc(w) {
 	const chord = distance$1(w.a, w.b), sag = w.bulge || 0;
 	if (chord < 1e-7 || Math.abs(sag) < 1e-7) return null;
 	const c = sag / 2 - chord * chord / (8 * sag);
-	const center = add(mul(add(w.a, w.b), .5), mul(wallNormal(w), c));
+	const center = add(mul$1(add(w.a, w.b), .5), mul$1(wallNormal(w), c));
 	return {
 		center,
 		radius: distance$1(center, w.a),
@@ -2245,14 +2245,14 @@ function pointAt(w, s) {
 	if (t === 0) return [...w.a];
 	if (t === 1) return [...w.b];
 	const a = arc(w);
-	return a ? add(a.center, mul([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul(sub$1(w.b, w.a), t));
+	return a ? add(a.center, mul$1([Math.cos(a.start + a.sweep * t), Math.sin(a.start + a.sweep * t)], a.radius)) : add(w.a, mul$1(sub$1(w.b, w.a), t));
 }
 /** Exact unit tangent along the centerline, also at circular wall endpoints. */
 function wallTangent(w, s) {
 	const a = arc(w);
 	if (!a) return wallDir(w);
 	const angle = a.start + a.sweep * clamp(s / wallLength(w), 0, 1);
-	return mul([-Math.sin(angle), Math.cos(angle)], Math.sign(a.sweep));
+	return mul$1([-Math.sin(angle), Math.cos(angle)], Math.sign(a.sweep));
 }
 function wallPath(w) {
 	if (!arc(w)) return [[...w.a], [...w.b]];
@@ -2290,8 +2290,8 @@ function sliceWall(w, from, to) {
 }
 function wallFootprint(w) {
 	const path = wallPath(w), a = arc(w), half = w.thickness / 2;
-	const normals = path.map((p) => a ? mul(sub$1(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
-	return [...path.map((p, i) => add(p, mul(normals[i], half))), ...path.map((p, i) => add(p, mul(normals[i], -half))).reverse()];
+	const normals = path.map((p) => a ? mul$1(sub$1(p, a.center), -Math.sign(a.sweep) / a.radius) : wallNormal(w));
+	return [...path.map((p, i) => add(p, mul$1(normals[i], half))), ...path.map((p, i) => add(p, mul$1(normals[i], -half))).reverse()];
 }
 function beamFootprint(b) {
 	return wallFootprint({
@@ -2333,7 +2333,7 @@ function pointInPolygon(p, poly) {
 	let inside = false;
 	for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
 		const a = poly[j], b = poly[i], d = sub$1(b, a);
-		if (distance$1(p, add(a, mul(d, clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), 0, 1)))) < 1e-7) return true;
+		if (distance$1(p, add(a, mul$1(d, clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), 0, 1)))) < 1e-7) return true;
 		if (a[1] > p[1] !== b[1] > p[1] && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
 	}
 	return inside;
@@ -2395,7 +2395,7 @@ function roomsBesideWall(plan, wallId) {
 			.9,
 			...room.poly.map((p) => clamp(dot$2(sub$1(p, a), d) / (dot$2(d, d) || 1), .001, .999))
 		];
-		for (const side of ["positive", "negative"]) if (!result[side].includes(room) && ts.some((t) => pointInPolygon(add(add(a, mul(d, t)), mul(n, (wall.thickness / 2 + 1) * (side === "positive" ? 1 : -1))), room.poly))) result[side].push(room);
+		for (const side of ["positive", "negative"]) if (!result[side].includes(room) && ts.some((t) => pointInPolygon(add(add(a, mul$1(d, t)), mul$1(n, (wall.thickness / 2 + 1) * (side === "positive" ? 1 : -1))), room.poly))) result[side].push(room);
 	}
 	return result;
 }
@@ -2455,7 +2455,7 @@ var union = (polys) => {
 };
 /** Outgoing tangent, including circular walls. */
 function ray(wall, end) {
-	const dir = mul(wallTangent(wall, end === "a" ? 0 : wallLength(wall)), end === "a" ? 1 : -1);
+	const dir = mul$1(wallTangent(wall, end === "a" ? 0 : wallLength(wall)), end === "a" ? 1 : -1);
 	return {
 		wall,
 		end,
@@ -2474,11 +2474,11 @@ function endPatches(plan, w, end) {
 		if (a.wall.id !== w.id && b.wall.id !== w.id) continue;
 		if ((b.angle - a.angle + Math.PI * 2) % (Math.PI * 2) <= Math.PI + 1e-7) continue;
 		const na = [-a.dir[1], a.dir[0]], nb = [-b.dir[1], b.dir[0]];
-		const ca = add(p, mul(na, a.wall.thickness / 2)), cb = add(p, mul(nb, -b.wall.thickness / 2));
+		const ca = add(p, mul$1(na, a.wall.thickness / 2)), cb = add(p, mul$1(nb, -b.wall.thickness / 2));
 		const det = cross$2(a.dir, b.dir);
-		let tip = mul(add(ca, cb), .5);
+		let tip = mul$1(add(ca, cb), .5);
 		if (Math.abs(det) > 1e-8) {
-			const intersection = add(ca, mul(a.dir, cross$2(sub$1(cb, ca), b.dir) / det));
+			const intersection = add(ca, mul$1(a.dir, cross$2(sub$1(cb, ca), b.dir) / det));
 			if (distance$1(p, intersection) <= 4 * Math.max(a.wall.thickness, b.wall.thickness) / 2) tip = intersection;
 		}
 		if (a.wall.id === w.id && a.end === end) patches.push([
@@ -2579,9 +2579,9 @@ function faceAxis(plan, face) {
 	const scale = arc ? (arc.radius + Math.sign(wall.bulge) * face.side * wall.thickness / 2) / arc.radius : 1;
 	const normalAt = (s) => {
 		const d = wallTangent(wall, s);
-		return mul([-d[1], d[0]], face.side);
+		return mul$1([-d[1], d[0]], face.side);
 	};
-	const at = (s, depth = 0) => add(arc ? pointAt(wall, s) : add(wall.a, mul(wallDir(wall), s)), mul(normalAt(s), wall.thickness / 2 + depth));
+	const at = (s, depth = 0) => add(arc ? pointAt(wall, s) : add(wall.a, mul$1(wallDir(wall), s)), mul$1(normalAt(s), wall.thickness / 2 + depth));
 	const toU = (s) => (face.side === 1 ? s : length - s) * scale;
 	const toS = (u) => face.side === 1 ? u / scale : length - u / scale;
 	return {
@@ -2591,7 +2591,7 @@ function faceAxis(plan, face) {
 		faceLength: length * scale,
 		scale,
 		origin: at(face.side === 1 ? 0 : length),
-		dir: mul(wallDir(wall), face.side),
+		dir: mul$1(wallDir(wall), face.side),
 		normal: normalAt(length / 2),
 		at,
 		normalAt,
@@ -2647,7 +2647,7 @@ function faceIntervals(plan, face) {
 		});
 		ts.sort((a, b) => a - b);
 		for (let i = 1; i < ts.length; i++) {
-			const p = add(origin, mul(d, (ts[i - 1] + ts[i]) / 2));
+			const p = add(origin, mul$1(d, (ts[i - 1] + ts[i]) / 2));
 			if (pointInPolygon(p, rings[0]) && !rings.slice(1).some((r) => pointInPolygon(p, r))) cuts.push([ts[i - 1], ts[i]]);
 		}
 	}
@@ -3408,7 +3408,7 @@ function cabinetTransform(plan, cab) {
 		return (u, depth) => axis.at(axis.toS(start + u), (place.gap ?? 0) - (cab.embed ?? 0) + depth);
 	}
 	const p = cab.place, theta = p.rot * Math.PI / 180, right = [Math.cos(theta), Math.sin(theta)], normal = [-Math.sin(theta), Math.cos(theta)];
-	return (u, depth) => add(p.at, add(mul(right, u - cab.width / 2), mul(normal, depth - cab.depth / 2)));
+	return (u, depth) => add(p.at, add(mul$1(right, u - cab.width / 2), mul$1(normal, depth - cab.depth / 2)));
 }
 function cabinetFootprint(plan, cab) {
 	const at = cabinetTransform(plan, cab);
@@ -14227,7 +14227,7 @@ function openingPath(w, from, to, depth = 0) {
 	const arc = arcParams(w), n = arc ? Math.max(2, Math.ceil(Math.abs(to - from) / 150), Math.ceil(Math.abs(to - from) / wallLength(w) * Math.abs(arc.angle) / 5)) : 1;
 	return Array.from({ length: n + 1 }, (_, i) => {
 		const s = from + (to - from) * i / n, d = wallTangent(w, s);
-		return add(pointAt(w, s), mul([-d[1], d[0]], depth));
+		return add(pointAt(w, s), mul$1([-d[1], d[0]], depth));
 	});
 }
 function openingStrip(w, from, to, thickness) {
@@ -14257,7 +14257,7 @@ function openingSymbol(plan, id, opts = {}) {
 	const end = o.offset + o.width, edges = [openingPath(w, o.offset, end, w.thickness / 2), openingPath(w, o.offset, end, -w.thickness / 2)];
 	const divider = (s) => {
 		const p = pointAt(w, s), d = wallTangent(w, s), n = [-d[1], d[0]];
-		return [add(p, mul(n, w.thickness / 2)), add(p, mul(n, -w.thickness / 2))];
+		return [add(p, mul$1(n, w.thickness / 2)), add(p, mul$1(n, -w.thickness / 2))];
 	};
 	const result = {
 		id,
@@ -14360,9 +14360,9 @@ function buildLevelSolids(plan, filter = () => true) {
 		const cuts = [...new Set(ts)].sort((a, b) => a - b);
 		for (let i = 1; i < cuts.length; i++) push("beam", beamFootprint({
 			...b,
-			a: add(b.a, mul(d, cuts[i - 1])),
-			b: add(b.a, mul(d, cuts[i]))
-		}), b.bottom, ceilingAt(plan, add(b.a, mul(d, (cuts[i - 1] + cuts[i]) / 2)), levelOf(plan, b).id), [b.id]);
+			a: add(b.a, mul$1(d, cuts[i - 1])),
+			b: add(b.a, mul$1(d, cuts[i]))
+		}), b.bottom, ceilingAt(plan, add(b.a, mul$1(d, (cuts[i - 1] + cuts[i]) / 2)), levelOf(plan, b).id), [b.id]);
 	}
 	const priority = {
 		wall: 0,
@@ -14502,11 +14502,11 @@ function buildSolids(plan, filter = () => true) {
 				lengths.forEach((length, i) => {
 					const a = Math.max(from, offset), b = Math.min(to, offset + length);
 					if (b > a && length > 0) {
-						const origin = stair.path[i], d = mul(sub$1(stair.path[i + 1], origin), 1 / length);
+						const origin = stair.path[i], d = mul$1(sub$1(stair.path[i + 1], origin), 1 / length);
 						strips.push([beamFootprint({
 							id: stair.id,
-							a: add(origin, mul(d, a - offset)),
-							b: add(origin, mul(d, b - offset)),
+							a: add(origin, mul$1(d, a - offset)),
+							b: add(origin, mul$1(d, b - offset)),
 							width: stair.width,
 							bottom: 0
 						})]);
@@ -14584,14 +14584,14 @@ function buildLocalFixtures(plan, opts = {}) {
 			const swing = o.swing ?? {
 				hinge: "start",
 				side: 1
-			}, hinge = swing.hinge === "start" ? s.a : s.b, closed = mul(chordDir, swing.hinge === "start" ? 1 : -1), angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)), rad = angle * Math.PI / 180;
-			const dir = add(mul(closed, Math.cos(rad)), mul(chordNormal, swing.side * Math.sin(rad)));
+			}, hinge = swing.hinge === "start" ? s.a : s.b, closed = mul$1(chordDir, swing.hinge === "start" ? 1 : -1), angle = Math.max(0, Math.min(90, opts.doorAngle ?? 60)), rad = angle * Math.PI / 180;
+			const dir = add(mul$1(closed, Math.cos(rad)), mul$1(chordNormal, swing.side * Math.sin(rad)));
 			result.push({
 				kind: "door",
 				id: o.id,
 				wall: o.wall,
 				hinge,
-				position: add(hinge, mul(dir, width / 2)),
+				position: add(hinge, mul$1(dir, width / 2)),
 				dir,
 				normal: [-dir[1], dir[0]],
 				width,
@@ -14639,7 +14639,7 @@ function buildLocalFixtures(plan, opts = {}) {
 						paneKind: pane.kind,
 						a,
 						b,
-						center: s.wall.bulge ? mul(add(a, b), .5) : pointAt(s.wall, offset + width / 2),
+						center: s.wall.bulge ? mul$1(add(a, b), .5) : pointAt(s.wall, offset + width / 2),
 						dir: s.wall.bulge ? dir : s.dir,
 						normal: s.wall.bulge ? [-dir[1], dir[0]] : s.normal,
 						width: s.wall.bulge ? distance$1(a, b) : width,
@@ -15197,6 +15197,2120 @@ function listDecor(plan) {
 			status: i.status,
 			by: i.by
 		}))) : []
+	};
+}
+// scripts/plan-code/normalize.mjs
+function canonical(v) {
+	if (Array.isArray(v)) return v.map(canonical);
+	if (v && typeof v === "object") {
+		const o = {};
+		for (const k of Object.keys(v).sort()) if (v[k] !== void 0) o[k] = canonical(v[k]);
+		return o;
+	}
+	return v;
+}
+var ELEMS = [
+	"walls",
+	"openings",
+	"beams",
+	"rooms",
+	"columns",
+	"shafts",
+	"stairs",
+	"voids"
+];
+var clone = (v) => JSON.parse(JSON.stringify(v));
+var r0 = (v) => typeof v === "number" ? Math.round(v) : v;
+var rp = (p) => Array.isArray(p) ? p.map(r0) : p;
+var rP = (P) => Array.isArray(P) ? P.map(rp) : P;
+var FIELD_ROUND = {
+	a: rp,
+	b: rp,
+	center: rp,
+	size: rp,
+	poly: rP,
+	path: rP,
+	thickness: r0,
+	height: r0,
+	lowHeight: r0,
+	bulge: r0,
+	offset: r0,
+	width: r0,
+	sill: r0,
+	head: r0,
+	bottom: r0,
+	ceiling: r0,
+	floorOffset: r0,
+	elevation: r0
+};
+function roundEl(el, isPaneParent) {
+	for (const k of Object.keys(el)) if (FIELD_ROUND[k]) el[k] = FIELD_ROUND[k](el[k]);
+	return el;
+}
+function dropEvidence(el) {
+	if (!el || !el.evidence) return;
+	const e = el.evidence, out = { certainty: e.certainty };
+	if (e.confirmed) out.confirmed = { by: e.confirmed.by };
+	el.evidence = out;
+}
+var isOpen = (q) => q.status ? q.status !== "resolved" : !(q.answer && q.reply && q.reply.outcome !== "ask");
+var PROFILES = {
+	P0: { label: "全量（文件原样）" },
+	P1: {
+		label: "去底图 src",
+		noSrc: true
+	},
+	P2: {
+		label: "P1 + 去 meta/legacy",
+		noSrc: true,
+		noMeta: true
+	},
+	P3: {
+		label: "P2 + evidence 只留 certainty/confirmed.by",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true
+	},
+	P4: {
+		label: "P3 + 只留未解决问题卡（去 bbox/log/reply）",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true,
+		openQ: true
+	},
+	P5: {
+		label: "P3 + 去全部问题卡",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true,
+		noQ: true
+	},
+	P4r: {
+		label: "P4 + 结构坐标取整 1mm",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true,
+		openQ: true,
+		round: true
+	},
+	P5r: {
+		label: "P5 + 结构坐标取整 1mm",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true,
+		noQ: true,
+		round: true
+	},
+	P6r: {
+		label: "P5r + 去改造 note/at（极限，丢改造说明）",
+		noSrc: true,
+		noMeta: true,
+		thinEvidence: true,
+		noQ: true,
+		round: true,
+		noNote: true
+	}
+};
+function applyProfile(input, name) {
+	const pf = PROFILES[name], p = clone(input);
+	if (pf.noSrc) {
+		if (p.underlay) delete p.underlay.src;
+		if (p.levelUnderlays) for (const k of Object.keys(p.levelUnderlays)) delete p.levelUnderlays[k].src;
+	}
+	if (pf.noMeta) {
+		delete p.meta;
+		delete p.legacy;
+	}
+	if (pf.thinEvidence) {
+		for (const k of ELEMS) (p[k] || []).forEach(dropEvidence);
+		for (const c of p.changes || []) if (c.data) dropEvidence(c.data);
+	}
+	if (pf.openQ) p.questions = (p.questions || []).filter(isOpen).map((q) => {
+		const { bbox, log, reply, ...rest } = q;
+		return rest;
+	});
+	if (pf.noQ) p.questions = [];
+	if (pf.round) {
+		for (const k of ELEMS) (p[k] || []).forEach(roundEl);
+		for (const q of p.questions || []) if (q.bbox) q.bbox = rp(q.bbox);
+		for (const c of p.changes || []) {
+			if (c.data) roundEl(c.data);
+			if (c.range) c.range = rp(c.range);
+		}
+	}
+	if (pf.noNote) for (const c of p.changes || []) {
+		delete c.note;
+		delete c.at;
+	}
+	return canonical(p);
+}
+// src/platform/card/plan-schema.js
+var ENUMS = {
+	wallKind: [
+		"exterior",
+		"bearing",
+		"partition",
+		"glass",
+		"half",
+		"half-glass"
+	],
+	openingKind: [
+		"door",
+		"sliding",
+		"doorway",
+		"window",
+		"floor-window",
+		"bay-window",
+		"open-balcony"
+	],
+	pane: [
+		"fixed",
+		"casement",
+		"sliding"
+	],
+	hinge: ["start", "end"],
+	certainty: [
+		"seen",
+		"inferred",
+		"unknown"
+	],
+	qcat: ["original", "renovation"],
+	qstatus: [
+		"open",
+		"answered",
+		"resolved"
+	],
+	outcome: [
+		"changed",
+		"confirmed",
+		"inferred",
+		"noted",
+		"ask",
+		"withdrawn"
+	],
+	role: ["user", "agent"],
+	cshape: ["rect", "round"],
+	ckind: ["bearing", "decorative"],
+	skind: [
+		"flue",
+		"pipe",
+		"vent",
+		"other"
+	],
+	stairKind: [
+		"straight",
+		"L",
+		"U",
+		"spiral"
+	],
+	op: [
+		"add",
+		"remove",
+		"update"
+	],
+	etype: [
+		"wall",
+		"opening",
+		"beam",
+		"room",
+		"column",
+		"shaft",
+		"stair",
+		"void"
+	],
+	by: ["user", "agent"],
+	cstatus: ["pending", "confirmed"]
+};
+var parse = (s) => s.split(" ").map((f) => {
+	const i = f.indexOf("=");
+	return [f.slice(0, i), f.slice(i + 1)];
+});
+var SCHEMA = {
+	Plan: parse("title=s ceiling=n north=f walls=a:Wall openings=a:Opening beams=a:Beam rooms=a:Room levels=a:Level columns=a:Column shafts=a:Shaft stairs=a:Stair voids=a:Void underlay=o:Underlay levelUnderlays=any questions=a:Question changes=a:Change decor=any legacy=any meta=any"),
+	Evidence: parse("certainty=e:certainty basis=s pixelBox=N confirmed=o:Confirmed"),
+	Confirmed: parse("by=s at=s note=s"),
+	Wall: parse("id=s level=s a=p b=p thickness=n kind=e:wallKind height=n lowHeight=n bulge=n name=s evidence=o:Evidence"),
+	Opening: parse("id=s wall=s offset=n width=n kind=e:openingKind sill=n head=n swing=o:Swing panes=a:Pane entry=b name=s evidence=o:Evidence"),
+	Swing: parse("hinge=e:hinge side=n"),
+	Pane: parse("width=f kind=e:pane"),
+	Beam: parse("id=s level=s a=p b=p width=n bottom=n name=s evidence=o:Evidence"),
+	Room: parse("id=s level=s name=s poly=P ceiling=n floorOffset=n use=s counted=b evidence=o:Evidence"),
+	Level: parse("id=s name=s elevation=n ceiling=n"),
+	Column: parse("id=s level=s center=p shape=e:cshape size=N rotation=f kind=e:ckind name=s evidence=o:Evidence"),
+	Shaft: parse("id=s level=s poly=P kind=e:skind name=s evidence=o:Evidence"),
+	Stair: parse("id=s level=s to=s poly=P path=P width=n kind=e:stairKind steps=n name=s evidence=o:Evidence"),
+	Void: parse("id=s level=s poly=P name=s"),
+	Underlay: parse("src=s mmPerPx=f mmPerPxY=f origin=N rotation=f flipX=b flipY=b opacity=f visible=b calibrations=a:Calib"),
+	Calib: parse("p1=N p2=N length=f note=s"),
+	Question: parse("id=s level=s text=s category=e:qcat certainty=e:certainty bbox=N targets=S options=S answer=s answeredBy=s answeredAt=s status=e:qstatus reply=o:Reply log=a:Log"),
+	Reply: parse("outcome=e:outcome text=s changed=S by=s at=s"),
+	Log: parse("role=e:role text=s by=s at=s outcome=e:outcome changed=S"),
+	Change: parse("id=s op=e:op type=e:etype target=s data=D range=N note=s group=s by=e:by status=e:cstatus confirm=o:Confirm at=s"),
+	Confirm: parse("by=s at=s")
+};
+var DATA_TYPE = {
+	wall: "Wall",
+	opening: "Opening",
+	beam: "Beam",
+	room: "Room",
+	column: "Column",
+	shaft: "Shaft",
+	stair: "Stair",
+	void: "Void"
+};
+var SEED = "version style materials surfaces furniture cabinets panels recesses presets cache id by status user agent confirmed pending name category color tex size target face wall side s z room floor ceiling material type span thickness grooves dir spacing family place width depth plinth columns cells h count door doors drawers open void top overhang hinge left right appliance cuts handle bar carcass front countertop kind host rect u shelves through at rot in height anchor a b pose feature wainscot slats skirting arch niche hole panel cabinet gap tall base wall-cabinet island planks herring tiles speckle grain veins cream wabi minimal mid nordic zh sofa bed table chair cat roughness metalness map layout".split(" ");
+// scripts/plan-code/plan-encode.js
+var Mismatch = class extends Error {};
+var W$1 = class {
+	constructor() {
+		this.b = [];
+	}
+	u(v) {
+		while (v >= 128) {
+			this.b.push(v % 128 + 128);
+			v = Math.floor(v / 128);
+		}
+		this.b.push(v);
+	}
+	raw(bytes) {
+		for (const x of bytes) this.b.push(x);
+	}
+};
+var zz = (v) => v >= 0 ? 2 * v : -2 * v - 1;
+var utf8 = (s) => new TextEncoder().encode(s);
+function general$1(w, v) {
+	for (let k = 0; k <= 6; k++) {
+		const p = 10 ** k, m = Math.round(v * p);
+		if (Number.isSafeInteger(m) && m / p === v && Math.abs(m) < 2 ** 44) {
+			w.u(zz(m) * 8 + k);
+			return;
+		}
+	}
+	w.u(7);
+	w.raw(new Uint8Array(new Float64Array([v]).buffer));
+}
+function encodeBody(plan, opts = {}) {
+	const coord = opts.coord || "delta";
+	const M = new W$1(), R = new W$1(), I = new W$1(), table = /* @__PURE__ */ new Map(), strs = [];
+	SEED.forEach((s, i) => table.set(s, i));
+	const shapes = /* @__PURE__ */ new Map();
+	let lastX = 0, lastY = 0;
+	const str = (s) => {
+		if (typeof s !== "string") throw new Mismatch("str");
+		if (s.includes("\0")) throw new Error("字符串含 NUL");
+		const hit = table.get(s);
+		if (hit !== void 0) {
+			R.u(hit + 1);
+			return;
+		}
+		table.set(s, table.size);
+		strs.push(s);
+		R.u(0);
+	};
+	const num = (v) => {
+		if (typeof v !== "number" || !isFinite(v)) throw new Mismatch("num");
+		if (Number.isInteger(v) && Math.abs(v) < 2 ** 44) I.u(zz(v) + 1);
+		else {
+			I.u(0);
+			general$1(I, v);
+		}
+	};
+	const gnum = (v) => {
+		if (typeof v !== "number" || !isFinite(v)) throw new Mismatch("gnum");
+		general$1(I, v);
+	};
+	const pt = (v) => {
+		if (!Array.isArray(v) || v.length !== 2) throw new Mismatch("pt");
+		const [x, y] = v;
+		if (typeof x !== "number" || typeof y !== "number") throw new Mismatch("pt");
+		if (coord === "delta" && Number.isInteger(x) && Number.isInteger(y)) {
+			num(x - lastX);
+			num(y - lastY);
+			lastX = x;
+			lastY = y;
+		} else if (coord === "delta") {
+			I.u(0);
+			I.u(1);
+			general$1(I, x);
+			general$1(I, y);
+		} else {
+			num(x);
+			num(y);
+		}
+	};
+	const any = (v) => {
+		if (v === null) return M.u(0);
+		if (v === false) return M.u(1);
+		if (v === true) return M.u(2);
+		if (typeof v === "number") {
+			M.u(3);
+			return num(v);
+		}
+		if (typeof v === "string") {
+			M.u(4);
+			return str(v);
+		}
+		if (Array.isArray(v)) {
+			if (v.length === 2 && Number.isInteger(v[0]) && Number.isInteger(v[1])) {
+				M.u(5);
+				return pt(v);
+			}
+			M.u(6);
+			M.u(v.length);
+			v.forEach(any);
+			return;
+		}
+		const keys = Object.keys(v).filter((k) => v[k] !== void 0), sig = keys.join("\0");
+		let sh = shapes.get(sig);
+		if (sh === void 0) {
+			M.u(7);
+			M.u(keys.length);
+			keys.forEach(str);
+			shapes.set(sig, shapes.size);
+		} else {
+			M.u(8);
+			M.u(sh);
+		}
+		keys.forEach((k) => any(v[k]));
+	};
+	const obj = (o, T) => {
+		if (!o || typeof o !== "object" || Array.isArray(o)) throw new Mismatch(T);
+		const F = SCHEMA[T];
+		let mask = 0, extras = null;
+		const known = new Set(F.map((f) => f[0]));
+		F.forEach((f, i) => {
+			if (o[f[0]] !== void 0) mask += 2 ** i;
+		});
+		for (const k of Object.keys(o)) if (!known.has(k) && o[k] !== void 0) {
+			extras = extras || {};
+			extras[k] = o[k];
+		}
+		if (extras) mask += 2 ** F.length;
+		M.u(mask);
+		F.forEach((f) => {
+			if (o[f[0]] !== void 0) val(o[f[0]], f[1], o);
+		});
+		if (extras) any(extras);
+	};
+	const val = (v, t, parent) => {
+		const c = t[0];
+		if (t === "any") return any(v);
+		if (c === "n") return num(v);
+		if (c === "f") return gnum(v);
+		if (c === "s") return str(v);
+		if (c === "b") {
+			if (typeof v !== "boolean") throw new Mismatch("bool");
+			return M.u(v ? 1 : 0);
+		}
+		if (c === "p") return pt(v);
+		if (c === "P" || c === "N" || c === "S") {
+			if (!Array.isArray(v)) throw new Mismatch("list");
+			M.u(v.length);
+			v.forEach(c === "P" ? pt : c === "N" ? num : str);
+			return;
+		}
+		if (c === "D") {
+			const T = DATA_TYPE[parent.type];
+			if (!T) throw new Mismatch("data");
+			return obj(v, T);
+		}
+		const arg = t.slice(2);
+		if (c === "e") {
+			const i = ENUMS[arg].indexOf(v);
+			if (i < 0) throw new Mismatch("enum");
+			return M.u(i);
+		}
+		if (c === "o") return obj(v, arg);
+		if (c === "a") {
+			if (!Array.isArray(v)) throw new Mismatch("array");
+			M.u(v.length);
+			v.forEach((x) => obj(x, arg));
+			return;
+		}
+		throw new Error("未知类型 " + t);
+	};
+	let mode = 1;
+	try {
+		if (plan.format !== "floorplan-structure" || plan.version !== 3) throw new Mismatch("root");
+		const { format, version, ...rest } = plan;
+		obj(rest, "Plan");
+	} catch (e) {
+		if (!(e instanceof Mismatch)) throw e;
+		return encodeBodyGeneric(plan);
+	}
+	return pack(mode, coord, strs, M, R, I);
+}
+function encodeBodyGeneric(plan) {
+	const M = new W$1(), R = new W$1(), I = new W$1(), table = /* @__PURE__ */ new Map(), strs = [], shapes = /* @__PURE__ */ new Map();
+	SEED.forEach((s, i) => table.set(s, i));
+	const str = (s) => {
+		const hit = table.get(s);
+		if (hit !== void 0) {
+			R.u(hit + 1);
+			return;
+		}
+		table.set(s, table.size);
+		strs.push(s);
+		R.u(0);
+	};
+	const num = (v) => {
+		if (Number.isInteger(v) && Math.abs(v) < 2 ** 44) I.u(zz(v) + 1);
+		else {
+			I.u(0);
+			general$1(I, v);
+		}
+	};
+	const any = (v) => {
+		if (v === null) return M.u(0);
+		if (v === false) return M.u(1);
+		if (v === true) return M.u(2);
+		if (typeof v === "number") {
+			M.u(3);
+			return num(v);
+		}
+		if (typeof v === "string") {
+			M.u(4);
+			return str(v);
+		}
+		if (Array.isArray(v)) {
+			M.u(6);
+			M.u(v.length);
+			v.forEach(any);
+			return;
+		}
+		const keys = Object.keys(v).filter((k) => v[k] !== void 0), sig = keys.join("\0");
+		const sh = shapes.get(sig);
+		if (sh === void 0) {
+			M.u(7);
+			M.u(keys.length);
+			keys.forEach(str);
+			shapes.set(sig, shapes.size);
+		} else {
+			M.u(8);
+			M.u(sh);
+		}
+		keys.forEach((k) => any(v[k]));
+	};
+	any(plan);
+	return pack(0, "abs", strs, M, R, I);
+}
+function pack(mode, coord, strs, M, R, I) {
+	return {
+		mode,
+		coord,
+		S: utf8(strs.join("\0")),
+		M: Uint8Array.from(M.b),
+		R: Uint8Array.from(R.b),
+		I: Uint8Array.from(I.b)
+	};
+}
+// scripts/plan-code/body.mjs
+var U = (n) => {
+	const o = [];
+	while (n >= 128) {
+		o.push(n % 128 + 128);
+		n = Math.floor(n / 128);
+	}
+	o.push(n);
+	return o;
+};
+var deflate = (buf, dict) => zlib.deflateRawSync(buf, {
+	level: 9,
+	memLevel: 9,
+	...dict && dict.length ? { dictionary: dict } : {}
+});
+function packPayload(b, dict) {
+	const head = [(b.mode ? 1 : 0) | (b.coord === "delta" ? 2 : 0) | (dict && dict.length ? 4 : 0)], parts = [];
+	[
+		b.S,
+		b.M,
+		b.R,
+		b.I
+	].forEach((s, i) => {
+		let z = Buffer.from(s);
+		if (s.length) {
+			const d = deflate(Buffer.from(s), i === 0 ? dict : void 0);
+			if (d.length < z.length) z = d;
+		}
+		head.push(...U(s.length), ...U(z.length));
+		parts.push(z);
+	});
+	return Buffer.concat([Buffer.from(head), ...parts]);
+}
+function makePayload(plan, dict, opts) {
+	return packPayload(encodeBody(plan, opts), dict);
+}
+// src/platform/card/rs.js
+var EXP = /* @__PURE__ */ new Uint8Array(512);
+var LOG = /* @__PURE__ */ new Uint8Array(256);
+for (let i = 0, x = 1; i < 255; i++) {
+	EXP[i] = x;
+	LOG[x] = i;
+	x <<= 1;
+	if (x & 256) x ^= 285;
+}
+for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+var mul = (a, b) => a && b ? EXP[LOG[a] + LOG[b]] : 0;
+var genCache = {};
+function generator(nsym) {
+	if (genCache[nsym]) return genCache[nsym];
+	let g = [1];
+	for (let i = 0; i < nsym; i++) {
+		const n = new Array(g.length + 1).fill(0);
+		g.forEach((c, j) => {
+			n[j] ^= c;
+			n[j + 1] ^= mul(c, EXP[i]);
+		});
+		g = n;
+	}
+	return genCache[nsym] = g;
+}
+function rsEncode(msg, nsym) {
+	const g = generator(nsym), out = new Uint8Array(msg.length + nsym);
+	out.set(msg);
+	for (let i = 0; i < msg.length; i++) {
+		const c = out[i];
+		if (c) for (let j = 1; j < g.length; j++) out[i + j] ^= mul(g[j], c);
+	}
+	out.set(msg);
+	return out;
+}
+function rsDecode(cw, nsym) {
+	const n = cw.length, syn = new Uint8Array(nsym);
+	let any = false;
+	for (let i = 0; i < nsym; i++) {
+		let s = 0;
+		for (let j = 0; j < n; j++) s = mul(s, EXP[i]) ^ cw[j];
+		syn[i] = s;
+		if (s) any = true;
+	}
+	if (!any) return 0;
+	let C = new Uint8Array(nsym + 1), B = new Uint8Array(nsym + 1);
+	C[0] = 1;
+	B[0] = 1;
+	let L = 0, m = 1, b = 1;
+	for (let i = 0; i < nsym; i++) {
+		let d = syn[i];
+		for (let j = 1; j <= L; j++) d ^= mul(C[j], syn[i - j]);
+		if (d === 0) {
+			m++;
+			continue;
+		}
+		const T = C.slice(), coef = EXP[LOG[d] + 255 - LOG[b]];
+		for (let j = 0; j + m <= nsym; j++) C[j + m] ^= mul(coef, B[j]);
+		if (2 * L <= i) {
+			L = i + 1 - L;
+			B = T;
+			b = d;
+			m = 1;
+		} else m++;
+	}
+	const pos = [];
+	for (let i = 0; i < n; i++) {
+		const xinv = EXP[(255 - (n - 1 - i) % 255) % 255];
+		let v = 0;
+		for (let j = L; j >= 0; j--) v = mul(v, xinv) ^ C[j];
+		if (v === 0) pos.push(i);
+	}
+	if (pos.length !== L) return -1;
+	const om = new Uint8Array(nsym);
+	for (let i = 0; i < nsym; i++) {
+		let v = 0;
+		for (let j = 0; j <= Math.min(i, L); j++) v ^= mul(C[j], syn[i - j]);
+		om[i] = v;
+	}
+	for (const i of pos) {
+		const pw = (n - 1 - i) % 255, x = EXP[pw], xinv = EXP[(255 - pw) % 255];
+		let nu = 0;
+		for (let j = nsym - 1; j >= 0; j--) nu = mul(nu, xinv) ^ om[j];
+		let de = 0;
+		for (let j = 1; j <= L; j += 2) de ^= mul(C[j], EXP[LOG[xinv] * (j - 1) % 255]);
+		if (de === 0) return -1;
+		cw[i] ^= mul(mul(x, nu), EXP[255 - LOG[de]]);
+	}
+	for (let i = 0; i < nsym; i++) {
+		let s = 0;
+		for (let j = 0; j < n; j++) s = mul(s, EXP[i]) ^ cw[j];
+		if (s) return -1;
+	}
+	return L;
+}
+function crc32$1(b) {
+	let c = -1;
+	for (let i = 0; i < b.length; i++) {
+		c ^= b[i];
+		for (let k = 0; k < 8; k++) c = c >>> 1 ^ (c & 1 ? 3988292384 : 0);
+	}
+	return ~c >>> 0;
+}
+var PARITY$1 = [
+	32,
+	64,
+	96,
+	128
+];
+var PALETTES = [
+	{
+		name: "bw",
+		bits: 1,
+		colors: [[
+			0,
+			0,
+			0
+		], [
+			255,
+			255,
+			255
+		]]
+	},
+	{
+		name: "gray4",
+		bits: 2,
+		colors: [
+			[
+				0,
+				0,
+				0
+			],
+			[
+				85,
+				85,
+				85
+			],
+			[
+				255,
+				255,
+				255
+			],
+			[
+				170,
+				170,
+				170
+			]
+		]
+	},
+	{
+		name: "color4",
+		bits: 2,
+		colors: [
+			[
+				0,
+				0,
+				0
+			],
+			[
+				0,
+				90,
+				255
+			],
+			[
+				255,
+				255,
+				255
+			],
+			[
+				255,
+				80,
+				0
+			]
+		]
+	},
+	{
+		name: "color8",
+		bits: 3,
+		colors: [
+			[
+				0,
+				0,
+				0
+			],
+			[
+				0,
+				0,
+				255
+			],
+			[
+				0,
+				255,
+				0
+			],
+			[
+				0,
+				255,
+				255
+			],
+			[
+				255,
+				0,
+				0
+			],
+			[
+				255,
+				0,
+				255
+			],
+			[
+				255,
+				255,
+				0
+			],
+			[
+				255,
+				255,
+				255
+			]
+		]
+	}
+];
+function dataCells(N) {
+	const xs = new Uint16Array(N * N), ys = new Uint16Array(N * N);
+	let n = 0;
+	for (let y = 1; y < N - 1; y++) for (let x = 0; x < N; x++) {
+		const left = x < 15, right = x >= N - 15, top = y < 15, bottom = y >= N - 15;
+		if ((left || right) && (top || bottom)) continue;
+		xs[n] = x;
+		ys[n] = y;
+		n++;
+	}
+	return {
+		xs,
+		ys,
+		n
+	};
+}
+function capacity(N, pal, parity) {
+	const { n } = dataCells(N), bytes = Math.floor((n - 384) * PALETTES[pal].bits / 8);
+	const nsym = PARITY$1[parity], k = 255 - nsym, blocks = Math.floor(bytes / 255), rest = bytes - blocks * 255;
+	return blocks * k + Math.max(0, rest - nsym);
+}
+function whitener(seed) {
+	let s = seed * 2654435761 + 2654435769 >>> 0 || 1;
+	return () => {
+		s ^= s << 13;
+		s >>>= 0;
+		s ^= s >>> 17;
+		s ^= s << 5;
+		s >>>= 0;
+		return s & 255;
+	};
+}
+function blockSizes(len, parity) {
+	const nsym = PARITY$1[parity], k = 255 - nsym, blocks = Math.max(1, Math.ceil(len / k)), sizes = [];
+	let left = len;
+	for (let i = 0; i < blocks; i++) {
+		const d = Math.min(k, left);
+		sizes.push(d);
+		left -= d;
+	}
+	return {
+		nsym,
+		sizes
+	};
+}
+function finderCell(x, y) {
+	const r = Math.max(Math.abs(x - 3), Math.abs(y - 3));
+	return r === 3 || r <= 1;
+}
+// scripts/plan-code/card-encode.js
+function minN(len, pal, parity, step = 8) {
+	let N = 48;
+	while (capacity(N, pal, parity) < len) N += step;
+	return N;
+}
+function encodeCard(payload, { pal = 0, parity = 1, cell = 4, quiet = 4, N, seqIdx = 0, seqTotal = 1 } = {}) {
+	N = N || minN(payload.length, pal, parity);
+	if (capacity(N, pal, parity) < payload.length) throw new Error("放不下");
+	const palette = PALETTES[pal], bits = palette.bits, { xs, ys, n } = dataCells(N);
+	const grid = new Uint8Array(N * N);
+	const white = palette.colors.findIndex((c) => c[0] === 255 && c[1] === 255 && c[2] === 255), black = 0;
+	grid.fill(white);
+	for (const [ox, oy] of [
+		[0, 0],
+		[N - 14, 0],
+		[0, N - 14],
+		[N - 14, N - 14]
+	]) for (let y = 0; y < 7; y++) for (let x = 0; x < 7; x++) if (finderCell(x, y)) for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) grid[(oy + y * 2 + a) * N + ox + x * 2 + b] = black;
+	for (const y of [0, N - 1]) for (let x = 15; x < N - 15; x++) grid[y * N + x] = ((x - 15) / 3 | 0) % palette.colors.length;
+	const hdr = /* @__PURE__ */ new Uint8Array(12), crc = crc32$1(payload);
+	hdr[0] = 70;
+	hdr[1] = 67;
+	hdr[2] = pal << 4 | parity;
+	hdr[3] = N / 8;
+	hdr[4] = payload.length >>> 16;
+	hdr[5] = payload.length >>> 8 & 255;
+	hdr[6] = payload.length & 255;
+	hdr[7] = crc >>> 24;
+	hdr[8] = crc >>> 16 & 255;
+	hdr[9] = crc >>> 8 & 255;
+	hdr[10] = crc & 255;
+	hdr[11] = seqIdx << 4 | seqTotal - 1;
+	const coded = rsEncode(hdr, 12), hb = coded.length * 8;
+	const wh = whitener(23294);
+	const hw = coded.map((b) => b ^ wh());
+	for (let i = 0; i < hb; i++) {
+		const v = hw[i >> 3] >> 7 - (i & 7) & 1 ? white : black;
+		grid[ys[i] * N + xs[i]] = v;
+		grid[ys[n - hb + i] * N + xs[n - hb + i]] = v;
+	}
+	const { nsym, sizes } = blockSizes(payload.length, parity), blocks = [];
+	let o = 0;
+	for (const d of sizes) {
+		blocks.push(rsEncode(payload.subarray(o, o + d), nsym));
+		o += d;
+	}
+	const total = blocks.reduce((s, b) => s + b.length, 0), stream = new Uint8Array(Math.floor((n - 2 * hb) * bits / 8));
+	let w = 0;
+	for (let i = 0; w < total; i++) for (const b of blocks) if (i < b.length) stream[w++] = b[i];
+	const dw = whitener(N);
+	for (let i = 0; i < stream.length; i++) stream[i] ^= dw();
+	for (let c = 0; c < n - 2 * hb; c++) {
+		let sym = 0;
+		for (let k = 0; k < bits; k++) {
+			const bi = c * bits + k, byte = stream[bi >> 3] || 0;
+			sym = sym << 1 | byte >> 7 - (bi & 7) & 1;
+		}
+		grid[ys[hb + c] * N + xs[hb + c]] = sym;
+	}
+	const side = (N + quiet * 2) * cell, rgba = new Uint8ClampedArray(side * side * 4).fill(255);
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const col = palette.colors[grid[y * N + x]];
+		for (let py = 0; py < cell; py++) for (let px = 0; px < cell; px++) {
+			const i = ((y + quiet) * cell + py) * side + (x + quiet) * cell + px;
+			rgba[i * 4] = col[0];
+			rgba[i * 4 + 1] = col[1];
+			rgba[i * 4 + 2] = col[2];
+		}
+	}
+	return {
+		w: side,
+		h: side,
+		rgba,
+		N
+	};
+}
+// src/platform/card/card-decode.js
+function luma(rgba, w, h) {
+	const Y = new Uint8Array(w * h);
+	for (let i = 0, j = 0; i < Y.length; i++, j += 4) Y[i] = rgba[j] * 77 + rgba[j + 1] * 150 + rgba[j + 2] * 29 >> 8;
+	return Y;
+}
+function otsu(Y) {
+	const hist = /* @__PURE__ */ new Float64Array(256);
+	for (let i = 0; i < Y.length; i++) hist[Y[i]]++;
+	let sum = 0;
+	for (let i = 0; i < 256; i++) sum += i * hist[i];
+	let wB = 0, sumB = 0, best = 0, t = 128;
+	for (let i = 0; i < 256; i++) {
+		wB += hist[i];
+		if (!wB) continue;
+		const wF = Y.length - wB;
+		if (!wF) break;
+		sumB += i * hist[i];
+		const d = sumB / wB - (sum - sumB) / wF, v = wB * wF * d * d;
+		if (v > best) {
+			best = v;
+			t = (sumB / wB + (sum - sumB) / wF) / 2;
+		}
+	}
+	return t;
+}
+var ratioOk = (r, tol) => {
+	const tot = r[0] + r[1] + r[2] + r[3] + r[4];
+	if (tot < 7) return 0;
+	const m = tot / 7, e = m * tol;
+	return Math.abs(r[0] - m) < e && Math.abs(r[1] - m) < e && Math.abs(r[2] - 3 * m) < 3 * e && Math.abs(r[3] - m) < e && Math.abs(r[4] - m) < e ? m : 0;
+};
+function crossCheck(Y, w, h, t, cx, cy, dx, dy, maxRun) {
+	const dark = (x, y) => x >= 0 && y >= 0 && x < w && y < h && Y[y * w + x] < t;
+	if (!dark(cx, cy)) return null;
+	const r = [
+		0,
+		0,
+		0,
+		0,
+		0
+	];
+	let i = 0;
+	while (i <= maxRun && dark(cx - i * dx, cy - i * dy)) {
+		r[2]++;
+		i++;
+	}
+	let a = i;
+	while (a <= maxRun && !dark(cx - a * dx, cy - a * dy)) {
+		r[1]++;
+		a++;
+	}
+	while (a <= maxRun && dark(cx - a * dx, cy - a * dy)) {
+		r[0]++;
+		a++;
+	}
+	let b = 1;
+	while (b <= maxRun && dark(cx + b * dx, cy + b * dy)) {
+		r[2]++;
+		b++;
+	}
+	const b0 = b;
+	while (b <= maxRun && !dark(cx + b * dx, cy + b * dy)) {
+		r[3]++;
+		b++;
+	}
+	while (b <= maxRun && dark(cx + b * dx, cy + b * dy)) {
+		r[4]++;
+		b++;
+	}
+	const m = ratioOk(r, .6);
+	if (!m) return null;
+	return {
+		m,
+		off: (b0 - i) / 2
+	};
+}
+function findFinders(Y, w, h) {
+	const t = otsu(Y), hits = [], step = Math.max(1, Math.floor(Math.min(w, h) / 900));
+	for (let y = 0; y < h; y += step) {
+		const row = y * w;
+		const runs = [];
+		let cur = Y[row] < t, len = 0;
+		for (let x = 0; x <= w; x++) {
+			const d = x < w ? Y[row + x] < t : !cur;
+			if (d === cur) len++;
+			else {
+				runs.push(len);
+				if (cur && runs.length >= 5) {
+					const n = runs.length, r = [
+						runs[n - 5],
+						runs[n - 4],
+						runs[n - 3],
+						runs[n - 2],
+						runs[n - 1]
+					], m = ratioOk(r, .5);
+					if (m) {
+						const cx = Math.round(x - r[4] - r[3] - r[2] / 2 - .5);
+						const v = crossCheck(Y, w, h, t, cx, y, 0, 1, Math.ceil(m * 7));
+						if (v && Math.abs(v.m - m) < m * .5) {
+							const cy = y + v.off, hh = crossCheck(Y, w, h, t, cx, Math.round(cy), 1, 0, Math.ceil(m * 7));
+							if (hh) hits.push({
+								x: cx + hh.off + .5,
+								y: cy + .5,
+								m: (m + v.m + hh.m) / 3
+							});
+						}
+					}
+				}
+				cur = d;
+				len = 1;
+			}
+		}
+	}
+	const cl = [];
+	for (const p of hits) {
+		let c = null;
+		for (const q of cl) if (Math.abs(q.x - p.x) < q.m * 2 && Math.abs(q.y - p.y) < q.m * 2 && Math.abs(q.m - p.m) < q.m * .5) {
+			c = q;
+			break;
+		}
+		if (c) {
+			c.x = (c.x * c.n + p.x) / (c.n + 1);
+			c.y = (c.y * c.n + p.y) / (c.n + 1);
+			c.m = (c.m * c.n + p.m) / (c.n + 1);
+			c.n++;
+		} else cl.push({
+			x: p.x,
+			y: p.y,
+			m: p.m,
+			n: 1
+		});
+	}
+	return cl.filter((c) => c.n >= 2);
+}
+function pickCorners(cl) {
+	const top = cl.slice().sort((a, b) => b.m * Math.sqrt(b.n) - a.m * Math.sqrt(a.n)).slice(0, 12);
+	let best = null, bestScore = 0;
+	for (let a = 0; a < top.length; a++) for (let b = a + 1; b < top.length; b++) for (let c = b + 1; c < top.length; c++) for (let d = c + 1; d < top.length; d++) {
+		const q = [
+			top[a],
+			top[b],
+			top[c],
+			top[d]
+		], cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4, cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+		q.sort((u, v) => Math.atan2(u.y - cy, u.x - cx) - Math.atan2(v.y - cy, v.x - cx));
+		const [p0, p1, p2, p3] = q, D = (u, v) => Math.hypot(u.x - v.x, u.y - v.y);
+		const s = [
+			D(p0, p1),
+			D(p1, p2),
+			D(p2, p3),
+			D(p3, p0)
+		], d1 = D(p0, p2), d2 = D(p1, p3);
+		if (Math.abs(d1 - d2) > .15 * Math.max(d1, d2)) continue;
+		if (Math.abs(s[0] - s[2]) > .15 * Math.max(s[0], s[2]) || Math.abs(s[1] - s[3]) > .15 * Math.max(s[1], s[3])) continue;
+		const ms = q.map((x) => x.m), mMin = Math.min(...ms), mMax = Math.max(...ms);
+		if (mMax > 1.6 * mMin) continue;
+		const score = d1 * d2 * (mMin / mMax);
+		if (score > bestScore) {
+			bestScore = score;
+			best = q;
+		}
+	}
+	return best;
+}
+function threeCorners(cl) {
+	const top = cl.slice().sort((a, b) => b.m * Math.sqrt(b.n) - a.m * Math.sqrt(a.n)).slice(0, 8);
+	let best = null, bestArea = 0;
+	for (let a = 0; a < top.length; a++) for (let b = 0; b < top.length; b++) for (let c = a + 1; c < top.length; c++) {
+		if (b === a || b === c) continue;
+		const A = top[a], B = top[b], C = top[c], ux = A.x - B.x, uy = A.y - B.y, vx = C.x - B.x, vy = C.y - B.y, lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy);
+		if (!lu || !lv || Math.abs(ux * vx + uy * vy) > .08 * lu * lv || Math.abs(lu - lv) > .1 * Math.max(lu, lv)) continue;
+		if (Math.max(A.m, B.m, C.m) > 1.5 * Math.min(A.m, B.m, C.m) || lu < 20 * B.m) continue;
+		if (lu * lv > bestArea) {
+			bestArea = lu * lv;
+			best = [
+				A,
+				B,
+				C,
+				{
+					x: A.x + C.x - B.x,
+					y: A.y + C.y - B.y,
+					m: B.m,
+					n: 1
+				}
+			];
+		}
+	}
+	if (!best) return null;
+	const cx = best.reduce((s, p) => s + p.x, 0) / 4, cy = best.reduce((s, p) => s + p.y, 0) / 4;
+	return best.sort((u, v) => Math.atan2(u.y - cy, u.x - cx) - Math.atan2(v.y - cy, v.x - cx));
+}
+function homography(q) {
+	const [x0, y0] = q[0], [x1, y1] = q[1], [x2, y2] = q[2], [x3, y3] = q[3];
+	const dx1 = x1 - x2, dx2 = x3 - x2, sx = x0 - x1 + x2 - x3, dy1 = y1 - y2, dy2 = y3 - y2, sy = y0 - y1 + y2 - y3;
+	const det = dx1 * dy2 - dx2 * dy1, g = (sx * dy2 - dx2 * sy) / det, h = (dx1 * sy - sx * dy1) / det;
+	return [
+		x1 - x0 + g * x1,
+		x3 - x0 + h * x3,
+		x0,
+		y1 - y0 + g * y1,
+		y3 - y0 + h * y3,
+		y0,
+		g,
+		h
+	];
+}
+var bilinear = (ch, w, h, x, y) => {
+	if (x < 0) x = 0;
+	if (y < 0) y = 0;
+	if (x > w - 1.001) x = w - 1.001;
+	if (y > h - 1.001) y = h - 1.001;
+	const xi = x | 0, yi = y | 0, fx = x - xi, fy = y - yi, i = yi * w + xi;
+	return (ch[i] * (1 - fx) + ch[i + 1] * fx) * (1 - fy) + (ch[i + w] * (1 - fx) + ch[i + w + 1] * fx) * fy;
+};
+function mapper(H, N, adj) {
+	const c = 7, span = N - 14, [a, b, cc, d, e, f, g, hh] = H;
+	return (cx, cy) => {
+		const u = (cx + adj.dx + adj.sx * (cx / N - .5) - c) / span, v = (cy + adj.dy + adj.sy * (cy / N - .5) - c) / span, z = g * u + hh * v + 1;
+		return [(a * u + b * v + cc) / z, (d * u + e * v + f) / z];
+	};
+}
+function refine(Y, w, h, H, N, xs, ys, n, cellPx) {
+	const adj = {
+		dx: 0,
+		dy: 0,
+		sx: 0,
+		sy: 0
+	}, idx = [], stepC = Math.max(1, Math.floor(n / 1500));
+	for (let i = 0; i < n; i += stepC) idx.push(i);
+	const o = cellPx >= 3 ? .22 : 0;
+	const score = () => {
+		const mp = mapper(H, N, adj);
+		let s = 0;
+		for (const i of idx) {
+			const cx = xs[i] + .5, cy = ys[i] + .5;
+			let v = 0;
+			if (o) {
+				for (const [ax, ay] of [
+					[0, 0],
+					[-o, -o],
+					[o, -o],
+					[-o, o],
+					[o, o]
+				]) {
+					const p = mp(cx + ax, cy + ay);
+					v += bilinear(Y, w, h, p[0], p[1]);
+				}
+				v = v / 5 - 128;
+			} else {
+				const p = mp(cx, cy);
+				v = bilinear(Y, w, h, p[0], p[1]) - 128;
+			}
+			s += v * v;
+		}
+		return s;
+	};
+	let best = score(), delta = .35;
+	for (let round = 0; round < 4; round++) {
+		for (const k of [
+			"dx",
+			"dy",
+			"sx",
+			"sy"
+		]) for (const sgn of [1, -1]) {
+			const old = adj[k], mult = k[0] === "s" ? 2 : 1;
+			adj[k] = old + sgn * delta * mult;
+			const sc = score();
+			if (sc > best) best = sc;
+			else adj[k] = old;
+		}
+		delta /= 2;
+	}
+	return adj;
+}
+function sampleChannels(chs, w, h, H, N, adj, cellPx) {
+	const mp = mapper(H, N, adj), out = chs.map(() => new Float32Array(N * N)), o = cellPx >= 3 ? .22 : 0;
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const i = y * N + x;
+		if (o) {
+			const pts = [
+				mp(x + .5, y + .5),
+				mp(x + .5 - o, y + .5 - o),
+				mp(x + .5 + o, y + .5 - o),
+				mp(x + .5 - o, y + .5 + o),
+				mp(x + .5 + o, y + .5 + o)
+			];
+			chs.forEach((ch, c) => {
+				let s = 0;
+				for (const p of pts) s += bilinear(ch, w, h, p[0], p[1]);
+				out[c][i] = s / 5;
+			});
+		} else {
+			const p = mp(x + .5, y + .5);
+			chs.forEach((ch, c) => {
+				out[c][i] = bilinear(ch, w, h, p[0], p[1]);
+			});
+		}
+	}
+	return out;
+}
+function sharpen(a, N, alpha) {
+	if (!alpha) return a;
+	const b = new Float32Array(a.length);
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const i = y * N + x, up = y ? a[i - N] : a[i], dn = y < N - 1 ? a[i + N] : a[i], l = x ? a[i - 1] : a[i], r = x < N - 1 ? a[i + 1] : a[i];
+		b[i] = a[i] + alpha * (a[i] - (up + dn + l + r) / 4);
+	}
+	return b;
+}
+function tileThreshold(a, N) {
+	const T = 16, tn = Math.ceil(N / T), sum = new Float64Array(tn * tn), cnt = new Uint32Array(tn * tn);
+	for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+		const k = (y / T | 0) * tn + (x / T | 0);
+		sum[k] += a[y * N + x];
+		cnt[k]++;
+	}
+	const th = new Float32Array(tn * tn);
+	for (let y = 0; y < tn; y++) for (let x = 0; x < tn; x++) {
+		let s = 0, c = 0;
+		for (let j = Math.max(0, y - 1); j <= Math.min(tn - 1, y + 1); j++) for (let i = Math.max(0, x - 1); i <= Math.min(tn - 1, x + 1); i++) {
+			s += sum[j * tn + i];
+			c += cnt[j * tn + i];
+		}
+		th[y * tn + x] = s / c;
+	}
+	return (x, y) => th[(y / T | 0) * tn + (x / T | 0)];
+}
+function classifyBW(L, N) {
+	const th = tileThreshold(L, N);
+	return (x, y) => L[y * N + x] >= th(x, y) ? 1 : 0;
+}
+function kmeansPalette(chans, N, pal, xs, ys, n) {
+	const k = pal.colors.length, c = chans.length, cent = [], cnt = new Array(k).fill(0);
+	for (let i = 0; i < k; i++) cent.push(new Float64Array(c));
+	for (const y of [0, N - 1]) for (let x = 16; x < N - 15; x += 3) {
+		const s = ((x - 15) / 3 | 0) % k;
+		cnt[s]++;
+		for (let j = 0; j < c; j++) cent[s][j] += chans[j][y * N + x];
+	}
+	for (let i = 0; i < k; i++) for (let j = 0; j < c; j++) cent[i][j] /= Math.max(1, cnt[i]);
+	const nearest = (i) => {
+		let b = 0, bd = Infinity;
+		for (let s = 0; s < k; s++) {
+			let d = 0;
+			for (let j = 0; j < c; j++) {
+				const e = chans[j][i] - cent[s][j];
+				d += e * e;
+			}
+			if (d < bd) {
+				bd = d;
+				b = s;
+			}
+		}
+		return b;
+	};
+	const step = Math.max(1, n >> 14);
+	for (let it = 0; it < 3; it++) {
+		const acc = cent.map(() => new Float64Array(c)), ct = new Array(k).fill(0);
+		for (let q = 0; q < n; q += step) {
+			const i = ys[q] * N + xs[q], s = nearest(i);
+			ct[s]++;
+			for (let j = 0; j < c; j++) acc[s][j] += chans[j][i];
+		}
+		for (let s = 0; s < k; s++) if (ct[s]) for (let j = 0; j < c; j++) cent[s][j] = acc[s][j] / ct[s];
+	}
+	return (x, y) => nearest(y * N + x);
+}
+function readHeader(cls, N, xs, ys, n) {
+	const hb = 192;
+	for (const copy of [0, 1]) {
+		const buf = /* @__PURE__ */ new Uint8Array(24);
+		for (let i = 0; i < hb; i++) {
+			const q = copy ? n - hb + i : i;
+			if (cls(xs[q], ys[q])) buf[i >> 3] |= 1 << 7 - (i & 7);
+		}
+		const wh = whitener(23294);
+		for (let i = 0; i < 24; i++) buf[i] ^= wh();
+		if (rsDecode(buf, 12) < 0) continue;
+		if (buf[0] === 70 && buf[1] === 67 && buf[3] * 8 === N) return {
+			pal: buf[2] >> 4,
+			parity: buf[2] & 15,
+			len: buf[4] * 65536 + buf[5] * 256 + buf[6],
+			crc: buf[7] * 16777216 + buf[8] * 65536 + buf[9] * 256 + buf[10] >>> 0,
+			seqIdx: buf[11] >> 4,
+			seqTotal: (buf[11] & 15) + 1
+		};
+	}
+	return null;
+}
+function readPayload(sym, hdr, N, xs, ys, n) {
+	const bits = PALETTES[hdr.pal].bits, hb = 192, m = n - 384, stream = new Uint8Array(Math.floor(m * bits / 8));
+	for (let c = 0; c < m; c++) {
+		const s = sym(xs[hb + c], ys[hb + c]);
+		for (let k = 0; k < bits; k++) {
+			const bi = c * bits + k;
+			if (bi >> 3 < stream.length && s >> bits - 1 - k & 1) stream[bi >> 3] |= 1 << 7 - (bi & 7);
+		}
+	}
+	const dw = whitener(N);
+	for (let i = 0; i < stream.length; i++) stream[i] ^= dw();
+	const { nsym, sizes } = blockSizes(hdr.len, hdr.parity), blocks = sizes.map((d) => new Uint8Array(d + nsym));
+	let r = 0, total = blocks.reduce((s, b) => s + b.length, 0);
+	for (let i = 0; r < total; i++) for (const b of blocks) if (i < b.length) b[i] = stream[r++];
+	const out = new Uint8Array(hdr.len);
+	let o = 0, fixed = 0;
+	for (let bi = 0; bi < blocks.length; bi++) {
+		const f = rsDecode(blocks[bi], nsym);
+		if (f < 0) return null;
+		fixed += f;
+		out.set(blocks[bi].subarray(0, sizes[bi]), o);
+		o += sizes[bi];
+	}
+	return crc32$1(out) === hdr.crc ? {
+		bytes: out,
+		fixed,
+		seqIdx: hdr.seqIdx,
+		seqTotal: hdr.seqTotal
+	} : null;
+}
+function decodeCard(rgba, w, h) {
+	const Y = luma(rgba, w, h), cl = findFinders(Y, w, h);
+	if (cl.length < 3) return null;
+	const tried = [pickCorners(cl), threeCorners(cl)].filter(Boolean);
+	for (const q of tried) {
+		const r = decodeWith(q, rgba, w, h, Y);
+		if (r) return r;
+	}
+	return null;
+}
+function decodeWith(q, rgba, w, h, Y) {
+	const cellPx0 = q.reduce((s, c) => s + c.m, 0) / 4 / 2;
+	const dist = Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y), estN = dist / cellPx0 + 14;
+	const cands = [], base = Math.round(estN / 8) * 8;
+	for (const d of [
+		0,
+		8,
+		-8,
+		16,
+		-16,
+		24,
+		-24
+	]) if (base + d >= 48) cands.push(base + d);
+	let channels = null;
+	for (const N of cands) {
+		const { xs, ys, n } = dataCells(N);
+		for (let rot = 0; rot < 4; rot++) {
+			const H = homography([
+				q[rot % 4],
+				q[(rot + 1) % 4],
+				q[(rot + 2) % 4],
+				q[(rot + 3) % 4]
+			].map((p) => [p.x, p.y]));
+			const cellPx = dist / (N - 14);
+			const adj = refine(Y, w, h, H, N, xs, ys, n, cellPx);
+			const [L0] = sampleChannels([Y], w, h, H, N, adj, cellPx);
+			let hdr = null;
+			for (const alpha of [0, .7]) {
+				hdr = readHeader(classifyBW(sharpen(L0, N, alpha), N), N, xs, ys, n);
+				if (hdr) break;
+			}
+			if (!hdr) continue;
+			const pal = PALETTES[hdr.pal];
+			for (const alpha of [
+				0,
+				.5,
+				1
+			]) {
+				let sym;
+				if (pal.bits === 1) sym = classifyBW(sharpen(L0, N, alpha), N);
+				else if (pal.name === "gray4") sym = kmeansPalette([sharpen(L0, N, alpha)], N, pal, xs, ys, n);
+				else {
+					if (!channels) {
+						channels = [
+							new Uint8Array(w * h),
+							new Uint8Array(w * h),
+							new Uint8Array(w * h)
+						];
+						for (let i = 0, j = 0; i < w * h; i++, j += 4) {
+							channels[0][i] = rgba[j];
+							channels[1][i] = rgba[j + 1];
+							channels[2][i] = rgba[j + 2];
+						}
+					}
+					sym = kmeansPalette(sampleChannels(channels, w, h, H, N, adj, cellPx).map((a) => sharpen(a, N, alpha)), N, pal, xs, ys, n);
+				}
+				const r = readPayload(sym, hdr, N, xs, ys, n);
+				if (r) return Object.assign(r, {
+					N,
+					cellPx,
+					alpha,
+					rot,
+					pal: pal.name
+				});
+			}
+			return null;
+		}
+	}
+	return null;
+}
+// src/platform/card/inflate.js
+var LBASE = [
+	3,
+	4,
+	5,
+	6,
+	7,
+	8,
+	9,
+	10,
+	11,
+	13,
+	15,
+	17,
+	19,
+	23,
+	27,
+	31,
+	35,
+	43,
+	51,
+	59,
+	67,
+	83,
+	99,
+	115,
+	131,
+	163,
+	195,
+	227,
+	258
+];
+var LEXT = [
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	1,
+	1,
+	1,
+	1,
+	2,
+	2,
+	2,
+	2,
+	3,
+	3,
+	3,
+	3,
+	4,
+	4,
+	4,
+	4,
+	5,
+	5,
+	5,
+	5,
+	0
+];
+var DBASE = [
+	1,
+	2,
+	3,
+	4,
+	5,
+	7,
+	9,
+	13,
+	17,
+	25,
+	33,
+	49,
+	65,
+	97,
+	129,
+	193,
+	257,
+	385,
+	513,
+	769,
+	1025,
+	1537,
+	2049,
+	3073,
+	4097,
+	6145,
+	8193,
+	12289,
+	16385,
+	24577
+];
+var DEXT = [
+	0,
+	0,
+	0,
+	0,
+	1,
+	1,
+	2,
+	2,
+	3,
+	3,
+	4,
+	4,
+	5,
+	5,
+	6,
+	6,
+	7,
+	7,
+	8,
+	8,
+	9,
+	9,
+	10,
+	10,
+	11,
+	11,
+	12,
+	12,
+	13,
+	13
+];
+var ORDER = [
+	16,
+	17,
+	18,
+	0,
+	8,
+	7,
+	9,
+	6,
+	10,
+	5,
+	11,
+	4,
+	12,
+	3,
+	13,
+	2,
+	14,
+	1,
+	15
+];
+function huff(lens, n) {
+	const count = /* @__PURE__ */ new Uint16Array(16), offs = /* @__PURE__ */ new Uint16Array(16), symbol = new Uint16Array(n);
+	for (let i = 0; i < n; i++) count[lens[i]]++;
+	count[0] = 0;
+	for (let i = 1; i < 15; i++) offs[i + 1] = offs[i] + count[i];
+	for (let i = 0; i < n; i++) if (lens[i]) symbol[offs[lens[i]]++] = i;
+	return {
+		count,
+		symbol
+	};
+}
+var fixedL;
+var fixedD;
+function fixed() {
+	if (fixedL) return;
+	const l = /* @__PURE__ */ new Uint8Array(288);
+	l.fill(8, 0, 144);
+	l.fill(9, 144, 256);
+	l.fill(7, 256, 280);
+	l.fill(8, 280, 288);
+	fixedL = huff(l, 288);
+	fixedD = huff((/* @__PURE__ */ new Uint8Array(30)).fill(5), 30);
+}
+function inflate(src, sizeHint, dict) {
+	const pre = dict ? dict.length : 0;
+	let out = new Uint8Array(pre + (sizeHint || src.length * 4 + 1024)), o = pre, p = 0, bit = 0, cnt = 0;
+	if (pre) out.set(dict);
+	const need = (n) => {
+		if (o + n > out.length) {
+			const x = new Uint8Array(Math.max(out.length * 2, o + n));
+			x.set(out);
+			out = x;
+		}
+	};
+	const bits = (n) => {
+		while (cnt < n) {
+			if (p >= src.length) throw new Error("inflate: 数据不够");
+			bit |= src[p++] << cnt;
+			cnt += 8;
+		}
+		const v = bit & (1 << n) - 1;
+		bit >>>= n;
+		cnt -= n;
+		return v;
+	};
+	const sym = (h) => {
+		let code = 0, first = 0, index = 0;
+		for (let len = 1; len <= 15; len++) {
+			code |= bits(1);
+			const c = h.count[len];
+			if (code - c < first) return h.symbol[index + (code - first)];
+			index += c;
+			first += c;
+			first <<= 1;
+			code <<= 1;
+		}
+		throw new Error("inflate: 坏的霍夫曼码");
+	};
+	let last;
+	do {
+		last = bits(1);
+		const type = bits(2);
+		if (type === 0) {
+			bit = 0;
+			cnt = 0;
+			const len = src[p] | src[p + 1] << 8;
+			p += 4;
+			need(len);
+			out.set(src.subarray(p, p + len), o);
+			o += len;
+			p += len;
+		} else if (type === 3) throw new Error("inflate: 坏块");
+		else {
+			let hl, hd;
+			if (type === 1) {
+				fixed();
+				hl = fixedL;
+				hd = fixedD;
+			} else {
+				const nlen = bits(5) + 257, ndist = bits(5) + 1, ncode = bits(4) + 4, lens = /* @__PURE__ */ new Uint8Array(320);
+				for (let i = 0; i < ncode; i++) lens[ORDER[i]] = bits(3);
+				const cl = huff(lens, 19);
+				lens.fill(0);
+				for (let i = 0; i < nlen + ndist;) {
+					const s = sym(cl);
+					if (s < 16) lens[i++] = s;
+					else {
+						let prev = 0, rep;
+						if (s === 16) {
+							prev = lens[i - 1];
+							rep = 3 + bits(2);
+						} else if (s === 17) rep = 3 + bits(3);
+						else rep = 11 + bits(7);
+						while (rep--) lens[i++] = prev;
+					}
+				}
+				hl = huff(lens.subarray(0, nlen), nlen);
+				hd = huff(lens.subarray(nlen, nlen + ndist), ndist);
+			}
+			for (;;) {
+				let s = sym(hl);
+				if (s < 256) {
+					need(1);
+					out[o++] = s;
+				} else if (s === 256) break;
+				else {
+					s -= 257;
+					const len = LBASE[s] + bits(LEXT[s]);
+					const d = sym(hd);
+					const dist = DBASE[d] + bits(DEXT[d]);
+					if (dist > o) throw new Error("inflate: 距离越界");
+					need(len);
+					for (let i = 0; i < len; i++, o++) out[o] = out[o - dist];
+				}
+			}
+		}
+	} while (!last);
+	return out.subarray(pre, o);
+}
+// src/platform/card/plan-decode.js
+var Rd = class {
+	constructor(b) {
+		this.b = b;
+		this.p = 0;
+	}
+	u() {
+		let v = 0, m = 1, x;
+		do {
+			x = this.b[this.p++];
+			v += (x & 127) * m;
+			m *= 128;
+		} while (x & 128);
+		return v;
+	}
+};
+var unzz = (v) => v % 2 ? -(v + 1) / 2 : v / 2;
+function general(r) {
+	const x = r.u(), k = x % 8;
+	if (k === 7) {
+		const f = new Float64Array(new Uint8Array(r.b.subarray(r.p, r.p + 8)).buffer);
+		r.p += 8;
+		return f[0];
+	}
+	return unzz((x - k) / 8) / 10 ** k;
+}
+function decodeBody({ mode, coord, S, M: mb, R: rb, I: ib }) {
+	const M = new Rd(mb), R = new Rd(rb), I = new Rd(ib);
+	const table = SEED.concat(S.length ? new TextDecoder().decode(S).split("\0") : []);
+	let next = SEED.length;
+	const shapes = [];
+	let lastX = 0, lastY = 0;
+	const str = () => {
+		const v = R.u();
+		return v ? table[v - 1] : table[next++];
+	};
+	const num = () => {
+		const v = I.u();
+		return v ? unzz(v - 1) : general(I);
+	};
+	const pt = () => {
+		if (coord !== "delta") return [num(), num()];
+		const a = I.u();
+		if (a === 0) {
+			I.u();
+			return [general(I), general(I)];
+		}
+		const dx = unzz(a - 1), dy = num();
+		lastX += dx;
+		lastY += dy;
+		return [lastX, lastY];
+	};
+	const any = () => {
+		const t = M.u();
+		if (t < 3) return [
+			null,
+			false,
+			true
+		][t];
+		if (t === 3) return num();
+		if (t === 4) return str();
+		if (t === 5) return pt();
+		if (t === 6) {
+			const n = M.u(), a = [];
+			for (let i = 0; i < n; i++) a.push(any());
+			return a;
+		}
+		let keys;
+		if (t === 7) {
+			const n = M.u();
+			keys = [];
+			for (let i = 0; i < n; i++) keys.push(str());
+			shapes.push(keys);
+		} else keys = shapes[M.u()];
+		const o = {};
+		for (const k of keys) o[k] = any();
+		return o;
+	};
+	const obj = (T) => {
+		const F = SCHEMA[T];
+		let mask = M.u();
+		const o = {};
+		for (let i = 0; i < F.length; i++) {
+			const bit = mask % 2;
+			mask = (mask - bit) / 2;
+			if (bit) o[F[i][0]] = val(F[i][1], o);
+		}
+		if (mask % 2) Object.assign(o, any());
+		return o;
+	};
+	const list = (f) => {
+		const n = M.u(), a = [];
+		for (let i = 0; i < n; i++) a.push(f());
+		return a;
+	};
+	const val = (t, parent) => {
+		const c = t[0];
+		if (t === "any") return any();
+		if (c === "n") return num();
+		if (c === "f") return general(I);
+		if (c === "s") return str();
+		if (c === "b") return M.u() === 1;
+		if (c === "p") return pt();
+		if (c === "P") return list(pt);
+		if (c === "N") return list(num);
+		if (c === "S") return list(str);
+		if (c === "D") return obj(DATA_TYPE[parent.type]);
+		const arg = t.slice(2);
+		if (c === "e") return ENUMS[arg][M.u()];
+		if (c === "o") return obj(arg);
+		return list(() => obj(arg));
+	};
+	if (mode === 0) return any();
+	return Object.assign({
+		format: "floorplan-structure",
+		version: 3
+	}, obj("Plan"));
+}
+// src/platform/card/payload-decode.js
+function decodePayload(b, dict) {
+	let p = 0;
+	const u = () => {
+		let v = 0, m = 1, x;
+		do {
+			x = b[p++];
+			v += (x & 127) * m;
+			m *= 128;
+		} while (x & 128);
+		return v;
+	};
+	const flags = b[p++], sizes = [];
+	for (let i = 0; i < 4; i++) sizes.push([u(), u()]);
+	const out = sizes.map(([raw, z], i) => {
+		const d = b.subarray(p, p += z);
+		return z === raw ? d : inflate(d, raw, i === 0 && flags & 4 ? dict : null);
+	});
+	return decodeBody({
+		mode: flags & 1,
+		coord: flags & 2 ? "delta" : "abs",
+		S: out[0],
+		M: out[1],
+		R: out[2],
+		I: out[3]
+	});
+}
+// src/platform/card/multipart.js
+var SET_ID = 4;
+function splitPayload(bytes, room) {
+	if (bytes.length <= room) return [{
+		bytes,
+		seqIdx: 0,
+		seqTotal: 1
+	}];
+	const size = room - SET_ID, total = Math.ceil(bytes.length / size);
+	if (total > 16) throw new Error(`要 ${total} 张，最多 16 张，把每张调大一点`);
+	const crc = crc32$1(bytes), id = [
+		crc >>> 24,
+		crc >>> 16 & 255,
+		crc >>> 8 & 255,
+		crc & 255
+	];
+	return Array.from({ length: total }, (_, i) => {
+		const part = bytes.subarray(i * size, (i + 1) * size), out = new Uint8Array(SET_ID + part.length);
+		out.set(id);
+		out.set(part, SET_ID);
+		return {
+			bytes: out,
+			seqIdx: i,
+			seqTotal: total
+		};
+	});
+}
+/** 收集读到的页，不管什么顺序、读到几次。扫一扫、拍照、相册读到的都进同一个 */
+function createCollector() {
+	let set = null, total = 0, pages = /* @__PURE__ */ new Map();
+	const state = () => {
+		const got = [...pages.keys()].sort((a, b) => a - b), missing = [];
+		for (let i = 0; i < total; i++) if (!pages.has(i)) missing.push(i);
+		return {
+			total,
+			got,
+			missing
+		};
+	};
+	return {
+		state,
+		reset() {
+			set = null;
+			total = 0;
+			pages = /* @__PURE__ */ new Map();
+		},
+		/** 存下来再读回来：退出小工具后接着读 */
+		dump: () => set === null ? null : {
+			set,
+			total,
+			pages: [...pages].map(([i, b]) => [i, btoa(String.fromCharCode(...b))])
+		},
+		load(d) {
+			if (!d || !Number.isInteger(d.total) || d.total < 2 || !Array.isArray(d.pages)) return false;
+			set = d.set;
+			total = d.total;
+			pages = new Map(d.pages.map(([i, s]) => [i, Uint8Array.from(atob(s), (c) => c.charCodeAt(0))]));
+			return true;
+		},
+		/** r 是 decodeCard 的结果。status：single 单张 | new 新读到一张 | dup 读过了 | switched 换了一套，从这张重新算 | complete 齐了 | broken 拼起来校验不过 */
+		add(r) {
+			if (r.seqTotal <= 1) return {
+				status: "single",
+				bytes: r.bytes
+			};
+			const b = r.bytes, id = b[0] * 16777216 + b[1] * 65536 + b[2] * 256 + b[3] >>> 0;
+			let status = "new";
+			if (set !== id || total !== r.seqTotal) {
+				if (set !== null) status = "switched";
+				set = id;
+				total = r.seqTotal;
+				pages = /* @__PURE__ */ new Map();
+			} else if (pages.has(r.seqIdx)) return {
+				status: "dup",
+				idx: r.seqIdx,
+				...state()
+			};
+			pages.set(r.seqIdx, b.subarray(SET_ID));
+			if (pages.size < total) return {
+				status,
+				idx: r.seqIdx,
+				...state()
+			};
+			let len = 0;
+			for (const p of pages.values()) len += p.length;
+			const out = new Uint8Array(len);
+			let o = 0;
+			for (let i = 0; i < total; i++) {
+				out.set(pages.get(i), o);
+				o += pages.get(i).length;
+			}
+			if (crc32$1(out) !== id) {
+				pages = /* @__PURE__ */ new Map();
+				return {
+					status: "broken",
+					idx: r.seqIdx,
+					...state()
+				};
+			}
+			return {
+				status: "complete",
+				idx: r.seqIdx,
+				bytes: out,
+				...state()
+			};
+		}
+	};
+}
+// scripts/plan-code/make.mjs
+var PARITY = 2;
+var DIGITS = {
+	0: "01110 10001 10011 10101 11001 10001 01110",
+	1: "00100 01100 00100 00100 00100 00100 01110",
+	2: "01110 10001 00001 00010 00100 01000 11111",
+	3: "11111 00010 00100 00010 00001 10001 01110",
+	4: "00010 00110 01010 10010 11111 00010 00010",
+	5: "11111 10000 11110 00001 00001 10001 01110",
+	6: "00110 01000 10000 11110 10001 10001 01110",
+	7: "11111 00001 00010 00100 01000 01000 01000",
+	8: "01110 10001 10001 01110 10001 10001 01110",
+	9: "01110 10001 10001 01111 00001 00010 01100",
+	"/": "00001 00010 00010 00100 01000 01000 10000"
+};
+var W = 1840;
+var H = 2048;
+var PANEL = 1760;
+var INK = [
+	22,
+	25,
+	30
+];
+function pagePng(bytes, N, seqIdx, seqTotal) {
+	const cell = Math.floor(PANEL / (N + 10)), { rgba: code } = encodeCard(bytes, {
+		pal: 0,
+		parity: PARITY,
+		cell,
+		quiet: 0,
+		N,
+		seqIdx,
+		seqTotal
+	});
+	const out = new Uint8Array(W * H * 4);
+	const rect = (x0, y0, w, h, [r, g, b]) => {
+		for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
+			const i = (y * W + x) * 4;
+			out[i] = r;
+			out[i + 1] = g;
+			out[i + 2] = b;
+			out[i + 3] = 255;
+		}
+	};
+	rect(0, 0, W, H, [
+		243,
+		244,
+		247
+	]);
+	const px = 40, py = 248;
+	rect(px, py, PANEL, PANEL, [
+		255,
+		255,
+		255
+	]);
+	const side = N * cell, ox = px + (PANEL - side >> 1), oy = py + (PANEL - side >> 1);
+	for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+		const s = (y * side + x) * 4, d = ((oy + y) * W + ox + x) * 4, black = code[s] < 128;
+		out[d] = black ? INK[0] : 255;
+		out[d + 1] = black ? INK[1] : 255;
+		out[d + 2] = black ? INK[2] : 255;
+		out[d + 3] = 255;
+	}
+	if (seqTotal > 1) {
+		const text = `${seqIdx + 1}/${seqTotal}`, s = 20, adv = 120;
+		let x = 1780 - text.length * adv + s;
+		for (const ch of text) {
+			DIGITS[ch].split(" ").forEach((row, j) => [...row].forEach((v, i) => {
+				if (v === "1") rect(x + i * s, 40 + j * s, s, s, INK);
+			}));
+			x += adv;
+		}
+		for (let k = 0; k < seqTotal; k++) rect(60 + k * 44, 96, 30, 30, k === seqIdx ? INK : [
+			207,
+			209,
+			214
+		]);
+	}
+	return {
+		rgba: out,
+		png: encodePng$1(W, H, out)
+	};
+}
+function encodePng$1(w, h, rgba) {
+	const raw = Buffer.alloc((w * 4 + 1) * h);
+	for (let y = 0; y < h; y++) {
+		raw[y * (w * 4 + 1)] = 0;
+		Buffer.from(rgba.buffer, rgba.byteOffset + y * w * 4, w * 4).copy(raw, y * (w * 4 + 1) + 1);
+	}
+	const chunk = (type, data) => {
+		const t = Buffer.from(type, "latin1"), len = Buffer.alloc(4), crc = Buffer.alloc(4), body = Buffer.concat([t, data]);
+		len.writeUInt32BE(data.length);
+		crc.writeUInt32BE(crc32$1(body) >>> 0);
+		return Buffer.concat([
+			len,
+			body,
+			crc
+		]);
+	};
+	const ihdr = Buffer.alloc(13);
+	ihdr.writeUInt32BE(w, 0);
+	ihdr.writeUInt32BE(h, 4);
+	ihdr[8] = 8;
+	ihdr[9] = 6;
+	return Buffer.concat([
+		Buffer.from([
+			137,
+			80,
+			78,
+			71,
+			13,
+			10,
+			26,
+			10
+		]),
+		chunk("IHDR", ihdr),
+		chunk("IDAT", zlib.deflateSync(raw, { level: 9 })),
+		chunk("IEND", Buffer.alloc(0))
+	]);
+}
+var pad = (n) => String(n).padStart(2, "0");
+var pngName = (i, total) => total > 1 ? `方案码-${pad(i + 1)}-共${total}张.png` : "方案码.png";
+/**
+* plan：已经校验过的 v3 方案（序列化后的对象）。player、logo 是播放页脚本和图标的文本。
+* 返回 html、images（{ name, png }，pngs 为 false 时不画）和大小。
+*/
+function buildPlanCode(plan, { n = 200, player, logo, pngs = true }) {
+	if (!Number.isInteger(n) || n < 48 || n % 8) throw new Error("--n 要是 8 的倍数，最小 48");
+	const v = canonical(plan), payload = makePayload(applyProfile(v, "P2")), room = capacity(n, 0, PARITY);
+	const parts = splitPayload(new Uint8Array(payload), room);
+	const pack = (rgba) => {
+		const bits = new Uint8Array(Math.ceil(n * n / 8));
+		for (let q = 0; q < n * n; q++) if (rgba[q * 4] > 127) bits[q >> 3] |= 1 << 7 - (q & 7);
+		return Buffer.from(bits).toString("base64");
+	};
+	const pages = parts.map((p) => pack(encodeCard(p.bytes, {
+		pal: 0,
+		parity: PARITY,
+		cell: 1,
+		quiet: 0,
+		N: n,
+		seqIdx: p.seqIdx,
+		seqTotal: p.seqTotal
+	}).rgba));
+	const collector = createCollector(), images = [];
+	let back = null;
+	for (const p of parts) {
+		let rgba, w, h;
+		if (pngs) {
+			const page = pagePng(p.bytes, n, p.seqIdx, p.seqTotal);
+			images.push({
+				name: pngName(p.seqIdx, p.seqTotal),
+				png: page.png
+			});
+			rgba = new Uint8ClampedArray(page.rgba.buffer);
+			w = W;
+			h = H;
+		} else {
+			const c = encodeCard(p.bytes, {
+				pal: 0,
+				parity: PARITY,
+				cell: 3,
+				quiet: 4,
+				N: n,
+				seqIdx: p.seqIdx,
+				seqTotal: p.seqTotal
+			});
+			rgba = c.rgba;
+			w = c.w;
+			h = c.h;
+		}
+		const r = decodeCard(rgba, w, h);
+		if (!r) throw new Error(`第 ${p.seqIdx + 1} 张自检读不出来`);
+		const a = collector.add(r);
+		if (a.status === "single" || a.status === "complete") back = a.bytes;
+	}
+	if (!back || Buffer.compare(Buffer.from(back), Buffer.from(payload))) throw new Error("自检：拼回来和原来不一样");
+	const decoded = decodePayload(back);
+	if (decoded.walls?.length !== v.walls.length || decoded.rooms?.length !== v.rooms.length) throw new Error("自检：读回来的方案对不上");
+	const data = {
+		N: n,
+		pages,
+		title: v.title ?? "方案",
+		sub: `${v.walls.length} 面墙 · ${v.openings.length} 个门窗 · ${v.rooms.length} 间`,
+		logo
+	};
+	return {
+		html: `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>方案码</title><style>
+html,body{margin:0;height:100%;background:#f3f4f7;color:#16191e;font:500 14px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column}#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}canvas{display:block}
+#bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;background:#fff;border-top:1px solid #e4e6ea}
+button,select{height:32px;border:0;border-radius:16px;background:#eef0f3;color:inherit;font:inherit;padding:0 12px;cursor:pointer}
+#play{background:#16191e;color:#fff}#nums{display:flex;gap:4px}#nums button{width:32px;padding:0}#nums button.on{background:#16191e;color:#fff}
+#tip{flex:1;min-width:200px;color:#5d636d;font-size:13px}
+</style></head><body><div id="stage"><canvas id="c"></canvas></div><div id="bar">
+<button id="prev" aria-label="上一张">‹</button><button id="play">暂停</button><button id="next" aria-label="下一张">›</button><div id="nums"></div>
+<select id="speed" aria-label="每张停留"><option value="1000">每张 1 秒</option><option value="1500" selected>每张 1.5 秒</option><option value="2500">每张 2.5 秒</option><option value="4000">每张 4 秒</option></select>
+<span id="tip">手机打开小红书小工具「改改你的家」→ 导入方案码 → 扫一扫。工具会告诉你还差哪几张。</span>
+<button id="full">全屏</button><button id="save">存这张图</button><button id="saveAll">存全部图片</button>
+</div><script>const DATA=${JSON.stringify(data).replace(/</g, "\\u003c")};<\/script><script>${player}<\/script></body></html>`,
+		images,
+		total: parts.length,
+		bytes: payload.length,
+		room
 	};
 }
 // node_modules/earcut/src/earcut.js
@@ -18136,6 +20250,7 @@ var init_generate = __esmMin((() => {
 	writeFileSync("schema/plan.schema.json", "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"urn:floorplan-structure:v3\",\n  \"title\": \"户型结构方案 v3（全部长度 mm）\",\n  \"description\": \"所有长度含高度均为 mm；像素坐标为 px、角度为度、面积为 m²、panes.width 为比例。legacy 是不透明旧格式快照，不参与 v3 换算。\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"decor\": {\n      \"$ref\": \"#/$defs/Decor\"\n    },\n    \"format\": {\n      \"const\": \"floorplan-structure\"\n    },\n    \"version\": {\n      \"const\": 3\n    },\n    \"title\": {\n      \"type\": \"string\"\n    },\n    \"ceiling\": {\n      \"type\": \"number\",\n      \"exclusiveMinimum\": 0\n    },\n    \"north\": {\n      \"type\": \"number\"\n    },\n    \"levels\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Level\"\n      },\n      \"minItems\": 1\n    },\n    \"columns\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Column\"\n      }\n    },\n    \"shafts\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Shaft\"\n      }\n    },\n    \"stairs\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Stair\"\n      }\n    },\n    \"voids\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Void\"\n      }\n    },\n    \"levelUnderlays\": {\n      \"type\": \"object\",\n      \"additionalProperties\": {\n        \"$ref\": \"#/$defs/Underlay\"\n      }\n    },\n    \"walls\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Wall\"\n      }\n    },\n    \"openings\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Opening\"\n      }\n    },\n    \"beams\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Beam\"\n      }\n    },\n    \"rooms\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Room\"\n      }\n    },\n    \"underlay\": {\n      \"$ref\": \"#/$defs/Underlay\"\n    },\n    \"questions\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Question\"\n      }\n    },\n    \"changes\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"$ref\": \"#/$defs/Change\"\n      }\n    },\n    \"legacy\": {\n      \"type\": \"object\",\n      \"additionalProperties\": true\n    },\n    \"meta\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"planFile\": {\n          \"type\": \"string\"\n        },\n        \"source\": {\n          \"type\": \"string\"\n        },\n        \"createdAt\": {\n          \"type\": \"string\"\n        },\n        \"updatedAt\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [],\n      \"additionalProperties\": false\n    }\n  },\n  \"required\": [\n    \"format\",\n    \"version\",\n    \"title\",\n    \"ceiling\",\n    \"walls\",\n    \"openings\",\n    \"beams\",\n    \"rooms\",\n    \"questions\",\n    \"changes\"\n  ],\n  \"additionalProperties\": false,\n  \"$defs\": {\n    \"Vec2\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 2,\n      \"maxItems\": 2\n    },\n    \"Box\": {\n      \"type\": \"array\",\n      \"prefixItems\": [\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        },\n        {\n          \"type\": \"number\"\n        }\n      ],\n      \"minItems\": 4,\n      \"maxItems\": 4\n    },\n    \"Certainty\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"seen\",\n        \"inferred\",\n        \"unknown\"\n      ]\n    },\n    \"WallKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"exterior\",\n        \"bearing\",\n        \"partition\",\n        \"glass\",\n        \"half\",\n        \"half-glass\"\n      ]\n    },\n    \"OpeningKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"door\",\n        \"sliding\",\n        \"doorway\",\n        \"window\",\n        \"floor-window\",\n        \"bay-window\",\n        \"open-balcony\"\n      ]\n    },\n    \"PaneKind\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"fixed\",\n        \"casement\",\n        \"sliding\"\n      ]\n    },\n    \"Evidence\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"basis\": {\n          \"type\": \"string\"\n        },\n        \"pixelBox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"confirmed\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            },\n            \"note\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"certainty\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Wall\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/WallKind\"\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"lowHeight\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"bulge\": {\n          \"type\": \"number\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"thickness\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Opening\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"wall\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"offset\": {\n          \"type\": \"number\",\n          \"minimum\": 0\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"$ref\": \"#/$defs/OpeningKind\"\n        },\n        \"sill\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"head\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"swing\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"hinge\": {\n              \"type\": \"string\",\n              \"enum\": [\n                \"start\",\n                \"end\"\n              ]\n            },\n            \"side\": {\n              \"enum\": [\n                1,\n                -1\n              ]\n            }\n          },\n          \"required\": [\n            \"hinge\",\n            \"side\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"panes\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"width\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"kind\": {\n                \"$ref\": \"#/$defs/PaneKind\"\n              }\n            },\n            \"required\": [\n              \"width\",\n              \"kind\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"minItems\": 1\n        },\n        \"entry\": {\n          \"type\": \"boolean\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"wall\",\n        \"offset\",\n        \"width\",\n        \"kind\",\n        \"sill\",\n        \"head\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Beam\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"a\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"b\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"bottom\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"a\",\n        \"b\",\n        \"width\",\n        \"bottom\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Room\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        },\n        \"floorOffset\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"use\": {\n          \"type\": \"string\"\n        },\n        \"counted\": {\n          \"type\": \"boolean\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Level\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"elevation\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm\"\n        },\n        \"ceiling\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"elevation\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Column\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"center\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"shape\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"rect\",\n            \"round\"\n          ]\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"bearing\",\n            \"decorative\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"center\",\n        \"shape\",\n        \"size\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Shaft\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"flue\",\n            \"pipe\",\n            \"vent\",\n            \"other\"\n          ]\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"poly\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Stair\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"evidence\": {\n          \"$ref\": \"#/$defs/Evidence\"\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"to\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"path\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 2\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"kind\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"straight\",\n            \"L\",\n            \"U\",\n            \"spiral\"\n          ]\n        },\n        \"steps\": {\n          \"type\": \"integer\",\n          \"minimum\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"to\",\n        \"poly\",\n        \"path\",\n        \"width\",\n        \"kind\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Void\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"poly\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Vec2\"\n          },\n          \"minItems\": 3\n        },\n        \"name\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"level\",\n        \"poly\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Underlay\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"src\": {\n          \"type\": \"string\",\n          \"minLength\": 1,\n          \"pattern\": \"^(?:(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]{2}).+|data:image/(?:png|jpe?g|webp|gif|bmp|avif);base64,.+|data:image/svg\\\\+xml(?:;charset=utf-8)?(?:;base64)?,.+)$\"\n        },\n        \"mmPerPx\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"mmPerPxY\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0\n        },\n        \"origin\": {\n          \"$ref\": \"#/$defs/Vec2\"\n        },\n        \"rotation\": {\n          \"type\": \"number\"\n        },\n        \"flipX\": {\n          \"type\": \"boolean\"\n        },\n        \"flipY\": {\n          \"type\": \"boolean\"\n        },\n        \"opacity\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"maximum\": 100\n        },\n        \"visible\": {\n          \"type\": \"boolean\"\n        },\n        \"calibrations\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"p1\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"p2\": {\n                \"$ref\": \"#/$defs/Vec2\"\n              },\n              \"length\": {\n                \"type\": \"number\",\n                \"exclusiveMinimum\": 0\n              },\n              \"note\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"p1\",\n              \"p2\",\n              \"length\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"src\",\n        \"mmPerPx\",\n        \"origin\",\n        \"opacity\",\n        \"visible\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionStatus\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"open\",\n        \"answered\",\n        \"resolved\"\n      ]\n    },\n    \"QuestionOutcome\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"changed\",\n        \"confirmed\",\n        \"inferred\",\n        \"noted\",\n        \"ask\",\n        \"withdrawn\"\n      ]\n    },\n    \"QuestionReply\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"outcome\",\n        \"text\",\n        \"by\",\n        \"at\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"QuestionLogEntry\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"role\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\"\n        },\n        \"at\": {\n          \"type\": \"string\"\n        },\n        \"outcome\": {\n          \"$ref\": \"#/$defs/QuestionOutcome\"\n        },\n        \"changed\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"minLength\": 1\n          }\n        }\n      },\n      \"required\": [\n        \"role\",\n        \"text\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Question\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"level\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"text\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"original\",\n            \"renovation\"\n          ]\n        },\n        \"certainty\": {\n          \"$ref\": \"#/$defs/Certainty\"\n        },\n        \"bbox\": {\n          \"$ref\": \"#/$defs/Box\"\n        },\n        \"targets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"options\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"answer\": {\n          \"type\": \"string\"\n        },\n        \"answeredBy\": {\n          \"type\": \"string\"\n        },\n        \"answeredAt\": {\n          \"type\": \"string\"\n        },\n        \"status\": {\n          \"$ref\": \"#/$defs/QuestionStatus\"\n        },\n        \"reply\": {\n          \"$ref\": \"#/$defs/QuestionReply\"\n        },\n        \"log\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/QuestionLogEntry\"\n          }\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"text\",\n        \"category\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Change\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"op\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"add\",\n            \"remove\",\n            \"update\"\n          ]\n        },\n        \"type\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"wall\",\n            \"opening\",\n            \"beam\",\n            \"room\",\n            \"column\",\n            \"shaft\",\n            \"stair\",\n            \"void\"\n          ]\n        },\n        \"target\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"data\": {\n          \"type\": \"object\"\n        },\n        \"range\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            },\n            {\n              \"type\": \"number\",\n              \"minimum\": 0\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"group\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"user\",\n            \"agent\"\n          ]\n        },\n        \"status\": {\n          \"type\": \"string\",\n          \"enum\": [\n            \"pending\",\n            \"confirmed\"\n          ]\n        },\n        \"confirm\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"at\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"op\",\n        \"type\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false,\n      \"allOf\": [\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          },\n          \"else\": {\n            \"required\": [\n              \"target\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              }\n            }\n          },\n          \"then\": {\n            \"required\": [\n              \"data\"\n            ]\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"thickness\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/WallKind\"\n                  },\n                  \"height\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"lowHeight\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"bulge\": {\n                    \"type\": \"number\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"wall\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"offset\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"$ref\": \"#/$defs/OpeningKind\"\n                  },\n                  \"sill\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"head\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"swing\": {\n                    \"type\": \"object\",\n                    \"properties\": {\n                      \"hinge\": {\n                        \"type\": \"string\",\n                        \"enum\": [\n                          \"start\",\n                          \"end\"\n                        ]\n                      },\n                      \"side\": {\n                        \"enum\": [\n                          1,\n                          -1\n                        ]\n                      }\n                    },\n                    \"required\": [\n                      \"hinge\",\n                      \"side\"\n                    ],\n                    \"additionalProperties\": false\n                  },\n                  \"panes\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"properties\": {\n                        \"width\": {\n                          \"type\": \"number\",\n                          \"exclusiveMinimum\": 0\n                        },\n                        \"kind\": {\n                          \"$ref\": \"#/$defs/PaneKind\"\n                        }\n                      },\n                      \"required\": [\n                        \"width\",\n                        \"kind\"\n                      ],\n                      \"additionalProperties\": false\n                    },\n                    \"minItems\": 1\n                  },\n                  \"entry\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"bottom\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"ceiling\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0,\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"floorOffset\": {\n                    \"type\": \"number\",\n                    \"description\": \"长度单位 mm\"\n                  },\n                  \"use\": {\n                    \"type\": \"string\"\n                  },\n                  \"counted\": {\n                    \"type\": \"boolean\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"center\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"shape\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"rect\",\n                      \"round\"\n                    ]\n                  },\n                  \"size\": {\n                    \"type\": \"array\",\n                    \"prefixItems\": [\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      },\n                      {\n                        \"type\": \"number\",\n                        \"exclusiveMinimum\": 0\n                      }\n                    ],\n                    \"minItems\": 2,\n                    \"maxItems\": 2\n                  },\n                  \"rotation\": {\n                    \"type\": \"number\"\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"bearing\",\n                      \"decorative\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"flue\",\n                      \"pipe\",\n                      \"vent\",\n                      \"other\"\n                    ]\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"evidence\": {\n                    \"$ref\": \"#/$defs/Evidence\"\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"to\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"path\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 2\n                  },\n                  \"width\": {\n                    \"type\": \"number\",\n                    \"exclusiveMinimum\": 0\n                  },\n                  \"kind\": {\n                    \"type\": \"string\",\n                    \"enum\": [\n                      \"straight\",\n                      \"L\",\n                      \"U\",\n                      \"spiral\"\n                    ]\n                  },\n                  \"steps\": {\n                    \"type\": \"integer\",\n                    \"minimum\": 1\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"update\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"id\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"level\": {\n                    \"type\": \"string\",\n                    \"minLength\": 1\n                  },\n                  \"poly\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"$ref\": \"#/$defs/Vec2\"\n                    },\n                    \"minItems\": 3\n                  },\n                  \"name\": {\n                    \"type\": \"string\"\n                  }\n                },\n                \"required\": [],\n                \"additionalProperties\": false\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"wall\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Wall\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"opening\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Opening\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"beam\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Beam\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"room\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Room\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"column\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Column\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"shaft\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Shaft\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"stair\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Stair\"\n              }\n            }\n          }\n        },\n        {\n          \"if\": {\n            \"properties\": {\n              \"op\": {\n                \"const\": \"add\"\n              },\n              \"type\": {\n                \"const\": \"void\"\n              }\n            }\n          },\n          \"then\": {\n            \"properties\": {\n              \"data\": {\n                \"$ref\": \"#/$defs/Void\"\n              }\n            }\n          }\n        }\n      ]\n    },\n    \"DecorLayer\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"version\": {\n          \"const\": 1\n        },\n        \"style\": {\n          \"type\": \"string\"\n        },\n        \"materials\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Material\"\n          }\n        },\n        \"presets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/StylePreset\"\n          }\n        },\n        \"components\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CustomComponent\"\n          }\n        },\n        \"surfaces\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Surface\"\n          }\n        },\n        \"furniture\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Furniture\"\n          }\n        },\n        \"doors\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/DoorFinish\"\n          }\n        },\n        \"cabinets\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Cabinet\"\n          }\n        },\n        \"panels\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Panel\"\n          }\n        },\n        \"recesses\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/Recess\"\n          }\n        },\n        \"cache\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"level\": {\n                \"type\": \"string\"\n              },\n              \"box\": {\n                \"$ref\": \"#/$defs/Box\"\n              },\n              \"anchor\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"wall\": {\n                    \"type\": \"string\"\n                  },\n                  \"a\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"b\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                },\n                \"required\": [\n                  \"wall\",\n                  \"a\",\n                  \"b\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"pose\": {\n                \"type\": \"object\",\n                \"properties\": {\n                  \"at\": {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  \"rot\": {\n                    \"type\": \"number\"\n                  },\n                  \"z\": {\n                    \"type\": \"number\"\n                  }\n                },\n                \"required\": [\n                  \"at\",\n                  \"rot\",\n                  \"z\"\n                ],\n                \"additionalProperties\": false\n              },\n              \"face\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  },\n                  {\n                    \"$ref\": \"#/$defs/Vec2\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              }\n            },\n            \"required\": [\n              \"box\"\n            ],\n            \"additionalProperties\": false\n          }\n        }\n      },\n      \"required\": [\n        \"version\",\n        \"style\",\n        \"materials\",\n        \"surfaces\",\n        \"furniture\",\n        \"cabinets\",\n        \"panels\",\n        \"recesses\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"DecorBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceRef\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"wall\": {\n          \"type\": \"string\"\n        },\n        \"side\": {\n          \"anyOf\": [\n            {\n              \"const\": 1\n            },\n            {\n              \"const\": -1\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"wall\",\n        \"side\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"FaceSpan\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"face\": {\n          \"$ref\": \"#/$defs/FaceRef\"\n        },\n        \"s\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        }\n      },\n      \"required\": [\n        \"face\",\n        \"s\",\n        \"z\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Recess\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"kind\": {\n          \"anyOf\": [\n            {\n              \"const\": \"niche\"\n            },\n            {\n              \"const\": \"hole\"\n            }\n          ]\n        },\n        \"host\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                }\n              },\n              \"required\": [\n                \"face\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"panel\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"panel\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"cabinet\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"cabinet\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"rect\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"u\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"z\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"depth\": {\n          \"anyOf\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"const\": \"through\"\n            }\n          ]\n        },\n        \"back\": {\n          \"type\": \"string\"\n        },\n        \"shelves\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"number\"\n          }\n        },\n        \"trim\": {\n          \"type\": \"string\"\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"kind\",\n        \"host\",\n        \"rect\",\n        \"depth\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Cabinet\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"family\": {\n          \"anyOf\": [\n            {\n              \"const\": \"tall\"\n            },\n            {\n              \"const\": \"base\"\n            },\n            {\n              \"const\": \"wall\"\n            }\n          ]\n        },\n        \"place\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"s\": {\n                  \"type\": \"number\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"s\"\n              ],\n              \"additionalProperties\": false\n            },\n            {\n              \"type\": \"object\",\n              \"properties\": {\n                \"at\": {\n                  \"$ref\": \"#/$defs/Vec2\"\n                },\n                \"rot\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"at\",\n                \"rot\"\n              ],\n              \"additionalProperties\": false\n            }\n          ]\n        },\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"depth\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"plinth\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"top\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"thickness\": {\n              \"type\": \"number\"\n            },\n            \"overhang\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"material\",\n            \"thickness\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"columns\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetColumn\"\n          }\n        },\n        \"cuts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"u\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"z\": {\n                \"type\": \"array\",\n                \"prefixItems\": [\n                  {\n                    \"type\": \"number\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ],\n                \"minItems\": 2,\n                \"maxItems\": 2\n              },\n              \"depth\": {\n                \"anyOf\": [\n                  {\n                    \"const\": \"through\"\n                  },\n                  {\n                    \"type\": \"number\"\n                  }\n                ]\n              }\n            },\n            \"required\": [\n              \"u\",\n              \"z\",\n              \"depth\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"carcass\": {\n              \"type\": \"string\"\n            },\n            \"front\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"carcass\",\n            \"front\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"handle\": {\n          \"anyOf\": [\n            {\n              \"const\": \"none\"\n            },\n            {\n              \"const\": \"bar\"\n            },\n            {\n              \"const\": \"knob\"\n            },\n            {\n              \"const\": \"edge\"\n            }\n          ]\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"family\",\n        \"place\",\n        \"width\",\n        \"depth\",\n        \"z\",\n        \"columns\",\n        \"materials\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"CabinetColumn\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"width\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"cells\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/CabinetCell\"\n          }\n        }\n      },\n      \"required\": [\n        \"cells\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"ApplianceType\": {\n      \"anyOf\": [\n        {\n          \"const\": \"fridge\"\n        },\n        {\n          \"const\": \"washer\"\n        },\n        {\n          \"const\": \"dryer\"\n        },\n        {\n          \"const\": \"oven\"\n        },\n        {\n          \"const\": \"steamer\"\n        },\n        {\n          \"const\": \"dishwasher\"\n        },\n        {\n          \"const\": \"microwave\"\n        },\n        {\n          \"const\": \"tv\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"CabinetCell\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"h\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"door\"\n            },\n            {\n              \"const\": \"doors\"\n            },\n            {\n              \"const\": \"drawers\"\n            },\n            {\n              \"const\": \"flap\"\n            },\n            {\n              \"const\": \"open\"\n            },\n            {\n              \"const\": \"void\"\n            },\n            {\n              \"const\": \"appliance\"\n            }\n          ]\n        },\n        \"hinge\": {\n          \"anyOf\": [\n            {\n              \"const\": \"left\"\n            },\n            {\n              \"const\": \"right\"\n            }\n          ]\n        },\n        \"count\": {\n          \"type\": \"integer\",\n          \"minimum\": 0,\n          \"maximum\": 1000\n        },\n        \"void\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"depth\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"through\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ]\n            },\n            \"top\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"z\": {\n                  \"type\": \"number\"\n                },\n                \"overhang\": {\n                  \"type\": \"number\"\n                },\n                \"material\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"z\"\n              ],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"appliance\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"type\": {\n              \"$ref\": \"#/$defs/ApplianceType\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 3,\n              \"maxItems\": 3\n            }\n          },\n          \"required\": [\n            \"type\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"material\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"type\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Panel\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"type\": {\n          \"anyOf\": [\n            {\n              \"const\": \"feature\"\n            },\n            {\n              \"const\": \"wainscot\"\n            },\n            {\n              \"const\": \"slats\"\n            },\n            {\n              \"const\": \"skirting\"\n            },\n            {\n              \"const\": \"arch\"\n            }\n          ]\n        },\n        \"span\": {\n          \"$ref\": \"#/$defs/FaceSpan\"\n        },\n        \"opening\": {\n          \"type\": \"string\"\n        },\n        \"thickness\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"grooves\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"dir\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"v\"\n                },\n                {\n                  \"const\": \"h\"\n                }\n              ]\n            },\n            \"spacing\": {\n              \"type\": \"number\"\n            },\n            \"width\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"dir\",\n            \"spacing\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"frame\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"style\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"flat\"\n                },\n                {\n                  \"const\": \"raised\"\n                }\n              ]\n            },\n            \"margin\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"style\",\n            \"margin\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"slats\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"width\": {\n              \"type\": \"number\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            },\n            \"depth\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"width\",\n            \"gap\",\n            \"depth\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"arch\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"radius\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"avoid\": {\n          \"anyOf\": [\n            {\n              \"const\": \"openings\"\n            },\n            {\n              \"const\": \"none\"\n            }\n          ]\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"thickness\",\n        \"material\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Furniture\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"flip\": {\n              \"type\": \"boolean\"\n            },\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"prev\": {\n              \"type\": \"object\",\n              \"additionalProperties\": {}\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"look\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"at\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"rot\": {\n              \"type\": \"number\"\n            },\n            \"in\": false\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"at\",\n            \"rot\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"flip\": {\n              \"type\": \"boolean\"\n            },\n            \"type\": {\n              \"type\": \"string\"\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"height\": {\n              \"type\": \"number\",\n              \"exclusiveMinimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"z\": {\n              \"type\": \"number\",\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"against\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"face\": {\n                  \"$ref\": \"#/$defs/FaceRef\"\n                },\n                \"gap\": {\n                  \"type\": \"number\"\n                }\n              },\n              \"required\": [\n                \"face\",\n                \"gap\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"embed\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"description\": \"长度单位 mm（文件 v3）\"\n            },\n            \"materials\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"body\": {\n                  \"type\": \"string\"\n                },\n                \"fabric\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            },\n            \"prev\": {\n              \"type\": \"object\",\n              \"additionalProperties\": {}\n            },\n            \"id\": {\n              \"type\": \"string\",\n              \"minLength\": 1\n            },\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"level\": {\n              \"type\": \"string\"\n            },\n            \"by\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"user\"\n                },\n                {\n                  \"const\": \"agent\"\n                }\n              ]\n            },\n            \"status\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"pending\"\n                },\n                {\n                  \"const\": \"confirmed\"\n                }\n              ]\n            },\n            \"note\": {\n              \"type\": \"string\"\n            },\n            \"look\": {\n              \"type\": \"string\"\n            },\n            \"ack\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"by\": {\n                  \"type\": \"string\"\n                },\n                \"at\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"required\": [\n                \"by\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"in\": {\n              \"type\": \"string\"\n            },\n            \"at\": false,\n            \"rot\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"type\",\n            \"size\",\n            \"height\",\n            \"id\",\n            \"by\",\n            \"status\",\n            \"in\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"FurnitureBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"flip\": {\n          \"type\": \"boolean\"\n        },\n        \"type\": {\n          \"type\": \"string\"\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"height\": {\n          \"type\": \"number\",\n          \"exclusiveMinimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"z\": {\n          \"type\": \"number\",\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"against\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"gap\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"face\",\n            \"gap\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"embed\": {\n          \"type\": \"number\",\n          \"minimum\": 0,\n          \"description\": \"长度单位 mm（文件 v3）\"\n        },\n        \"materials\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"body\": {\n              \"type\": \"string\"\n            },\n            \"fabric\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"type\",\n        \"size\",\n        \"height\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialCategory\": {\n      \"anyOf\": [\n        {\n          \"const\": \"wood-floor\"\n        },\n        {\n          \"const\": \"tile\"\n        },\n        {\n          \"const\": \"stone\"\n        },\n        {\n          \"const\": \"paint\"\n        },\n        {\n          \"const\": \"texture-paint\"\n        },\n        {\n          \"const\": \"wallpaper\"\n        },\n        {\n          \"const\": \"veneer\"\n        },\n        {\n          \"const\": \"microcement\"\n        },\n        {\n          \"const\": \"laminate\"\n        },\n        {\n          \"const\": \"fabric\"\n        },\n        {\n          \"const\": \"leather\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"glass\"\n        },\n        {\n          \"const\": \"rattan\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"Material\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"$ref\": \"#/$defs/MaterialCategory\"\n        },\n        \"color\": {\n          \"type\": \"string\",\n          \"pattern\": \"^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$\"\n        },\n        \"texture\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"kind\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"planks\"\n                },\n                {\n                  \"const\": \"tiles\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"grain\"\n                },\n                {\n                  \"const\": \"speckle\"\n                },\n                {\n                  \"const\": \"veins\"\n                },\n                {\n                  \"const\": \"weave\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"kind\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"pbr\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"roughness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"metalness\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"sheen\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"maps\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"base\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"normal\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                },\n                \"rough\": {\n                  \"type\": \"string\",\n                  \"minLength\": 1,\n                  \"pattern\": \"^(?![A-Za-z][A-Za-z0-9+.-]*:|[/\\\\\\\\]|\\\\s)[^\\\\r\\\\n]+$\"\n                }\n              },\n              \"required\": [],\n              \"additionalProperties\": false\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"ref\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"category\",\n        \"color\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"MaterialRole\": {\n      \"anyOf\": [\n        {\n          \"const\": \"floor.main\"\n        },\n        {\n          \"const\": \"floor.wet\"\n        },\n        {\n          \"const\": \"floor.outdoor\"\n        },\n        {\n          \"const\": \"threshold\"\n        },\n        {\n          \"const\": \"wall.main\"\n        },\n        {\n          \"const\": \"wall.wet\"\n        },\n        {\n          \"const\": \"wall.accent\"\n        },\n        {\n          \"const\": \"ceiling\"\n        },\n        {\n          \"const\": \"skirting\"\n        },\n        {\n          \"const\": \"wood.main\"\n        },\n        {\n          \"const\": \"cabinet.front\"\n        },\n        {\n          \"const\": \"cabinet.carcass\"\n        },\n        {\n          \"const\": \"stone.top\"\n        },\n        {\n          \"const\": \"metal\"\n        },\n        {\n          \"const\": \"fabric.main\"\n        },\n        {\n          \"const\": \"fabric.accent\"\n        },\n        {\n          \"const\": \"rug\"\n        }\n      ]\n    },\n    \"StylePreset\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"blurb\": {\n          \"type\": \"string\"\n        },\n        \"roles\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {\n            \"type\": \"string\"\n          }\n        },\n        \"rooms\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"match\": {\n                \"type\": \"array\",\n                \"items\": {\n                  \"type\": \"string\"\n                }\n              },\n              \"floor\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              },\n              \"wall\": {\n                \"$ref\": \"#/$defs/MaterialRole\"\n              }\n            },\n            \"required\": [\n              \"match\"\n            ],\n            \"additionalProperties\": false\n          }\n        },\n        \"trims\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"skirting\": {\n              \"type\": \"object\",\n              \"properties\": {\n                \"height\": {\n                  \"type\": \"number\"\n                },\n                \"role\": {\n                  \"$ref\": \"#/$defs/MaterialRole\"\n                }\n              },\n              \"required\": [\n                \"height\",\n                \"role\"\n              ],\n              \"additionalProperties\": false\n            },\n            \"threshold\": {\n              \"type\": \"boolean\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"board\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\"\n          }\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"builtin\"\n            },\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"roles\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"SurfaceTarget\": {\n      \"anyOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"floor\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"floor\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"ceiling\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"ceiling\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"face\": {\n              \"$ref\": \"#/$defs/FaceRef\"\n            },\n            \"s\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"face\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"Surface\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"target\": {\n          \"$ref\": \"#/$defs/SurfaceTarget\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"layout\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"pattern\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"straight\"\n                },\n                {\n                  \"const\": \"staggered\"\n                },\n                {\n                  \"const\": \"herringbone\"\n                },\n                {\n                  \"const\": \"chevron\"\n                },\n                {\n                  \"const\": \"grid\"\n                },\n                {\n                  \"const\": \"diagonal\"\n                }\n              ]\n            },\n            \"size\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            },\n            \"origin\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            },\n            \"angle\": {\n              \"type\": \"number\"\n            },\n            \"joint\": {\n              \"type\": \"number\"\n            }\n          },\n          \"required\": [\n            \"pattern\"\n          ],\n          \"additionalProperties\": false\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"target\",\n        \"material\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"Decor\": {\n      \"$ref\": \"#/$defs/DecorLayer\"\n    },\n    \"ComponentCategory\": {\n      \"anyOf\": [\n        {\n          \"const\": \"furniture\"\n        },\n        {\n          \"const\": \"appliance\"\n        },\n        {\n          \"const\": \"sanitary\"\n        },\n        {\n          \"const\": \"lighting\"\n        },\n        {\n          \"const\": \"ceiling\"\n        },\n        {\n          \"const\": \"plant\"\n        },\n        {\n          \"const\": \"soft\"\n        },\n        {\n          \"const\": \"storage\"\n        },\n        {\n          \"const\": \"other\"\n        }\n      ]\n    },\n    \"ComponentPath\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"d\": {\n          \"type\": \"string\"\n        },\n        \"style\": {\n          \"anyOf\": [\n            {\n              \"const\": \"outline\"\n            },\n            {\n              \"const\": \"detail\"\n            },\n            {\n              \"const\": \"dashed\"\n            }\n          ]\n        },\n        \"fill\": {\n          \"type\": \"string\"\n        },\n        \"stroke\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"d\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"ComponentPartBase\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [],\n      \"additionalProperties\": false\n    },\n    \"ComponentPart\": {\n      \"oneOf\": [\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"extrude\"\n            },\n            \"outline\": {\n              \"type\": \"string\"\n            },\n            \"z\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"outline\",\n            \"z\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"side\"\n            },\n            \"along\": {\n              \"anyOf\": [\n                {\n                  \"const\": \"width\"\n                },\n                {\n                  \"const\": \"depth\"\n                }\n              ]\n            },\n            \"profile\": {\n              \"type\": \"string\"\n            },\n            \"span\": {\n              \"type\": \"array\",\n              \"prefixItems\": [\n                {\n                  \"type\": \"number\"\n                },\n                {\n                  \"type\": \"number\"\n                }\n              ],\n              \"minItems\": 2,\n              \"maxItems\": 2\n            }\n          },\n          \"required\": [\n            \"kind\",\n            \"along\",\n            \"profile\",\n            \"span\"\n          ],\n          \"additionalProperties\": false\n        },\n        {\n          \"type\": \"object\",\n          \"properties\": {\n            \"name\": {\n              \"type\": \"string\"\n            },\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            },\n            \"kind\": {\n              \"const\": \"revolve\"\n            },\n            \"profile\": {\n              \"type\": \"string\"\n            },\n            \"center\": {\n              \"$ref\": \"#/$defs/Vec2\"\n            }\n          },\n          \"required\": [\n            \"kind\",\n            \"profile\"\n          ],\n          \"additionalProperties\": false\n        }\n      ]\n    },\n    \"CustomComponent\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"id\": {\n          \"type\": \"string\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"category\": {\n          \"$ref\": \"#/$defs/ComponentCategory\"\n        },\n        \"label\": {\n          \"type\": \"string\"\n        },\n        \"basis\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"size\": {\n          \"type\": \"array\",\n          \"prefixItems\": [\n            {\n              \"type\": \"number\"\n            },\n            {\n              \"type\": \"number\"\n            }\n          ],\n          \"minItems\": 2,\n          \"maxItems\": 2\n        },\n        \"height\": {\n          \"type\": \"number\"\n        },\n        \"plan\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"front\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"parts\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPart\"\n          }\n        },\n        \"seg\": {\n          \"type\": \"string\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"category\",\n        \"size\",\n        \"height\",\n        \"parts\"\n      ],\n      \"additionalProperties\": false\n    },\n    \"DoorFinish\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"opening\": {\n          \"type\": \"string\"\n        },\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"material\": {\n          \"type\": \"string\"\n        },\n        \"frame\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"color\": {\n              \"type\": \"string\"\n            },\n            \"material\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [],\n          \"additionalProperties\": false\n        },\n        \"front\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"$ref\": \"#/$defs/ComponentPath\"\n          }\n        },\n        \"flip\": {\n          \"type\": \"boolean\"\n        },\n        \"prev\": {\n          \"type\": \"object\",\n          \"additionalProperties\": {}\n        },\n        \"id\": {\n          \"type\": \"string\",\n          \"minLength\": 1\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"level\": {\n          \"type\": \"string\"\n        },\n        \"by\": {\n          \"anyOf\": [\n            {\n              \"const\": \"user\"\n            },\n            {\n              \"const\": \"agent\"\n            }\n          ]\n        },\n        \"status\": {\n          \"anyOf\": [\n            {\n              \"const\": \"pending\"\n            },\n            {\n              \"const\": \"confirmed\"\n            }\n          ]\n        },\n        \"note\": {\n          \"type\": \"string\"\n        },\n        \"look\": {\n          \"type\": \"string\"\n        },\n        \"ack\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"by\": {\n              \"type\": \"string\"\n            },\n            \"at\": {\n              \"type\": \"string\"\n            }\n          },\n          \"required\": [\n            \"by\"\n          ],\n          \"additionalProperties\": false\n        }\n      },\n      \"required\": [\n        \"opening\",\n        \"id\",\n        \"by\",\n        \"status\"\n      ],\n      \"additionalProperties\": false\n    }\n  }\n}\n");
 }));
 // scripts/plan.ts
+var planCodeAsset = (injected, rel) => injected ?? readFileSync(new URL(rel, import.meta.url), "utf8");
 var [command, input, output, ...flags] = process.argv.slice(2);
 if (command === "schema") await Promise.resolve().then(() => (init_generate(), generate_exports));
 else try {
@@ -18152,14 +20267,16 @@ else try {
 		"cameras",
 		"questions",
 		"answer",
-		"resolve"
+		"resolve",
+		"plan-code"
 	].includes(command) || !input || [
 		"convert",
 		"export",
 		"render",
 		"answer",
 		"resolve",
-		"decor-edit"
+		"decor-edit",
+		"plan-code"
 	].includes(command) && !output) throw new Error("用法：先设置 $SKILL 为 Skill 根目录的绝对路径，$WORK 为用户工作目录的绝对路径；在 $WORK 执行，输入输出用全路径。\nSKILL=\"/绝对路径/see-your-home\"\nWORK=\"/用户的/工作目录\"\ncd \"$WORK\"\n" + [
 		"schema",
 		"cameras \"$WORK/方案.json\" [--json] [--all] [--state original|renovated] [--level id]",
@@ -18168,6 +20285,7 @@ else try {
 		"apply \"$WORK/方案.json\"",
 		"stats \"$WORK/方案.json\"",
 		"decor \"$WORK/方案.json\" [--brief]（--brief 只看每项挂得上挂不上和问题）",
+		"plan-code \"$WORK/方案.json\" \"$WORK/方案码\" [--n 200]（方案码：手机小工具扫这个就能看方案）",
 		"decor-edit \"$WORK/方案.json\" <补丁.json|->（原地原子写入 v3，只改 decor；add kind 含 door；furniture 可用 ceiling:{room} 或 wall；item/定义可写 look）",
 		"decor-list \"$WORK/方案.json\"（只读查询家具、风格、材料、构件、门外观 doors、房间墙面及 openings[].door）",
 		"questions \"$WORK/方案.json\" [--status open|answered|resolved]",
@@ -18431,6 +20549,23 @@ else try {
 			warnings: report.warnings.map(agentUnits)
 		}, null, 2) + "\n");
 		if (issues.some(blocksPersistence)) process.exitCode = 1;
+	} else if (command === "plan-code") {
+		if (issues.some(blocksPersistence)) throw new Error(`方案有错，先修好再生成：${issues.filter(blocksPersistence).map((i) => i.message).slice(0, 3).join("；")}`);
+		let n;
+		for (let i = 0; i < flags.length; i++) if (flags[i] === "--n") n = Number(flags[++i]);
+		else throw new Error(`未知参数 ${flags[i]}`);
+		const raw = JSON.parse(source);
+		const made = buildPlanCode(raw.version === 3 ? raw : JSON.parse(serializePlan(plan)), {
+			n,
+			player: planCodeAsset("// 播放页和图片共用的画法（跑在浏览器里）。DATA 由 plan-code.mjs 写进页面，一个文件带走，不联网。\n/* global DATA */\nconst INK = '#16191e', GREY = '#5d636d', FONT = '-apple-system, \"PingFang SC\", \"Microsoft YaHei\", sans-serif'\nconst pages = DATA.pages.map(b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)))\nconst total = pages.length, N = DATA.N\nconst logo = new Image()\nlogo.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(DATA.logo)\n\nfunction codeCanvas(i, cell) {\n  const side = N * cell, c = document.createElement('canvas')\n  c.width = side; c.height = side\n  const g = c.getContext('2d'), bits = pages[i]\n  g.fillStyle = '#fff'; g.fillRect(0, 0, side, side); g.fillStyle = INK\n  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const q = y * N + x; if (!((bits[q >> 3] >> (7 - (q & 7))) & 1)) g.fillRect(x * cell, y * cell, cell, cell) }\n  return c\n}\nconst rr = (g, x, y, w, h, r) => { g.beginPath(); g.roundRect(x, y, w, h, r) }\n/** 白卡 + 点阵 + 外框。格子是整数像素，缩放不会糊 */\nfunction drawPanel(g, i, px, py, P) {\n  const cell = Math.max(1, Math.floor(P / (N + 10))), side = N * cell, ox = px + ((P - side) >> 1), oy = py + ((P - side) >> 1)\n  g.fillStyle = '#fff'; rr(g, px, py, P, P, P * 0.032); g.fill()\n  g.drawImage(codeCanvas(i, cell), ox, oy)\n  // 薄荷线在二值化时算白，不影响定位；真正定位靠四角的墨色块，比例不变（1:1:3:1:1），只把角做圆\n  const m = 2 * cell, gap = 3 * cell\n  g.strokeStyle = '#55d3a5'; g.lineWidth = 1.5 * cell; rr(g, ox - gap, oy - gap, side + 2 * gap, side + 2 * gap, 7 * cell); g.stroke()\n  for (const [x, y] of [[ox, oy], [ox + side - 7 * m, oy], [ox, oy + side - 7 * m], [ox + side - 7 * m, oy + side - 7 * m]]) {\n    g.fillStyle = '#fff'; g.fillRect(x, y, 7 * m, 7 * m)\n    g.fillStyle = INK; rr(g, x, y, 7 * m, 7 * m, 1.6 * m); g.fill()\n    g.fillStyle = '#fff'; rr(g, x + m, y + m, 5 * m, 5 * m, m); g.fill()\n    g.fillStyle = INK; rr(g, x + 2 * m, y + 2 * m, 3 * m, 3 * m, .7 * m); g.fill()\n  }\n}\nfunction drawBack(g, W, H) {\n  g.fillStyle = '#f3f4f7'; g.fillRect(0, 0, W, H)\n  for (const [x, y, r, col] of [[0, H, H * .63, 'rgba(174,236,211,.55)'], [W, 0, H * .58, 'rgba(208,200,250,.6)']]) {\n    const a = g.createRadialGradient(x, y, 0, x, y, r); a.addColorStop(0, col); a.addColorStop(1, 'rgba(255,255,255,0)')\n    g.fillStyle = a; g.fillRect(0, 0, W, H)\n  }\n}\n/** 第几张的小圆点：现在这张是墨色 */\nfunction drawDots(g, i, x, y, r, gap) {\n  for (let k = 0; k < total; k++) { g.fillStyle = k === i ? INK : 'rgba(22,25,30,.18)'; g.beginPath(); g.arc(x + k * gap, y, r, 0, 7); g.fill() }\n}\n/** 竖版（图片）：抬头在上面，页码在右上角，存相册、发给自己都认得出是第几张 */\nfunction drawCard(c, i, H) {\n  const k = H / 2048, W = Math.round(1840 * k); c.width = W; c.height = H\n  const g = c.getContext('2d'), f = n => n * k\n  drawBack(g, W, H)\n  g.drawImage(logo, f(56), f(44), f(148), f(148))\n  g.textBaseline = 'alphabetic'; g.textAlign = 'left'\n  g.fillStyle = INK; g.font = `600 ${f(76)}px ${FONT}`; g.fillText('方案码', f(226), f(118))\n  g.fillStyle = GREY; g.font = `500 ${f(30)}px ${FONT}`; g.fillText(DATA.title.slice(0, 14) + ' · ' + DATA.sub, f(228), f(176))\n  g.textAlign = 'right'\n  if (total > 1) {\n    g.fillStyle = INK; g.font = `700 ${f(112)}px ${FONT}`; g.fillText(`${i + 1} / ${total}`, W - f(60), f(128))\n    drawDots(g, i, W - f(60) - (total - 1) * f(30) - f(9), f(170), f(9), f(30))\n  }\n  g.textAlign = 'left'\n  const P = Math.round(f(1760))\n  drawPanel(g, i, Math.round((W - P) / 2), H - P - Math.round(f(40)), P)\n}\n/** 横版（电脑屏幕）：点阵占满屏幕高度，页码放在左边，格子能大一点 */\nfunction drawWide(c, i, W, H) {\n  c.width = W; c.height = H\n  const g = c.getContext('2d'), P = H - 16, left = W - P - 8, k = Math.min(1.4, left / 380)\n  drawBack(g, W, H)\n  drawPanel(g, i, W - P - 8, 8, P)\n  const x = Math.max(16, (left - 340 * k) / 2)\n  g.textBaseline = 'alphabetic'; g.textAlign = 'left'; g.fillStyle = INK\n  g.font = `600 ${36 * k}px ${FONT}`; g.fillText('方案码', x, 64 * k)\n  g.fillStyle = GREY; g.font = `500 ${15 * k}px ${FONT}`; g.fillText(DATA.title.slice(0, 18), x, 94 * k); g.fillText(DATA.sub, x, 116 * k)\n  if (total > 1) {\n    g.fillStyle = INK; g.font = `700 ${92 * k}px ${FONT}`; g.fillText(`${i + 1} / ${total}`, x, H / 2)\n    g.fillStyle = GREY; g.font = `500 ${15 * k}px ${FONT}`; g.fillText(`第 ${i + 1} 张，共 ${total} 张`, x, H / 2 + 34 * k)\n    drawDots(g, i, x + 6, H / 2 + 62 * k, 5 * k, Math.min(18 * k, (left - 32) / total))\n  }\n}\n\nconst canvas = document.getElementById('c'), bar = document.getElementById('bar'), $ = id => document.getElementById(id)\nlet cur = 0, playing = total > 1, speed = 1500, timer = 0\nfunction paint() {\n  const d = window.devicePixelRatio || 1, W = Math.round(innerWidth * d), H = Math.round((innerHeight - bar.offsetHeight) * d)\n  // 屏幕够宽就用横版\n  if (W / H > 1.25) drawWide(canvas, cur, W, H)\n  else { const h = Math.min(H, Math.round((W / 1840) * 2048)); drawCard(canvas, cur, h) }\n  canvas.style.width = `${canvas.width / d}px`; canvas.style.height = `${canvas.height / d}px`\n  document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('on', +b.dataset.page === cur))\n  $('play').textContent = playing ? '暂停' : '播放'\n  document.body.dataset.page = String(cur)\n}\nconst go = i => { cur = (i + total) % total; paint() }\nfunction schedule() { clearInterval(timer); if (playing && total > 1) timer = setInterval(() => go(cur + 1), speed) }\n$('prev').onclick = () => { playing = false; schedule(); go(cur - 1) }\n$('next').onclick = () => { playing = false; schedule(); go(cur + 1) }\n$('play').onclick = () => { playing = !playing; schedule(); paint() }\n$('speed').onchange = e => { speed = +e.target.value; schedule() }\n$('full').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen() }\nconst nums = $('nums')\nfor (let i = 0; i < total; i++) { const b = document.createElement('button'); b.textContent = String(i + 1); b.dataset.page = String(i); b.onclick = () => { playing = false; schedule(); go(i) }; nums.appendChild(b) }\nconst toPng = i => { const c = document.createElement('canvas'); drawCard(c, i, 2048); return c }\nconst pngName = i => `方案码-${String(i + 1).padStart(2, '0')}-共${total}张.png`\nfunction saveOne(i) { toPng(i).toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = pngName(i); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000) }) }\n$('save').onclick = () => saveOne(cur)\n$('saveAll').onclick = () => { for (let i = 0; i < total; i++) setTimeout(() => saveOne(i), i * 300) }\nif (total < 2) for (const id of ['prev', 'next', 'play', 'speed', 'saveAll', 'nums']) $(id).style.display = 'none'\naddEventListener('resize', paint)\naddEventListener('keydown', e => { if (e.key === 'ArrowLeft') $('prev').click(); else if (e.key === 'ArrowRight') $('next').click(); else if (e.key === ' ') { e.preventDefault(); $('play').click() } })\nlogo.onload = () => { paint(); schedule() }\nwindow.__png = i => toPng(i).toDataURL('image/png').split(',')[1]\nwindow.__ready = logo.decode().then(() => true)\nwindow.__names = () => pages.map((_, i) => pngName(i))\n", "./plan-code/player.js"),
+			logo: planCodeAsset("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\" width=\"64\" height=\"64\"><style>.Ata-fl{fill:#d3d7dd}.Ata-wl{fill:#b3b8c0}.Ata-ed{fill:#6c727c}.Ata-cap{fill:#16191e}.Ata-sh{fill:#b3b8c0}.Ata-mwl{fill:#f8c08f}.Ata-med{fill:#c96a26}.Ata-mcap{fill:#e8863f}@media (prefers-color-scheme:dark){.Ata-fl{fill:#3b4048}.Ata-wl{fill:#6c727c}.Ata-ed{fill:#8e949d}.Ata-cap{fill:#f5f6f8}.Ata-sh{fill:#545a63}.Ata-mwl{fill:#f8c08f}.Ata-med{fill:#e8863f}.Ata-mcap{fill:#f4a462}}</style><g transform=\"translate(32 29.15) scale(0.91)\"><path class=\"Ata-fl\" d=\"M0 0L25.98 15L0 30L-25.98 15Z\"/><path class=\"Ata-wl\" d=\"M0 0L-25.98 15L-25.98 3L0 -12Z\"/><path class=\"Ata-ed\" d=\"M-30.74 12.25L-25.98 15L-25.98 3L-30.74 0.25Z\"/><path class=\"Ata-cap\" d=\"M0 -17.5L4.76 -14.75L-25.98 3L-30.74 0.25Z\"/><path class=\"Ata-sh\" d=\"M4.76 -2.75L30.74 12.25L25.98 15L0 0Z\"/><path class=\"Ata-mwl\" d=\"M0 -9L25.98 6L25.98 -6L0 -21Z\"/><path class=\"Ata-med\" d=\"M30.74 3.25L25.98 6L25.98 -6L30.74 -8.75Z\"/><path class=\"Ata-mcap\" d=\"M4.76 -23.75L30.74 -8.75L25.98 -6L0 -21Z\"/></g></svg>\n", "../src/assets/try-mark.svg")
+		});
+		mkdirSync(output, { recursive: true });
+		writeFileSync(join(output, "方案码.html"), made.html);
+		for (const im of made.images) writeFileSync(join(output, im.name), im.png);
+		console.log(`方案码：${made.total} 张，共 ${(made.bytes / 1024).toFixed(2)} KB，自检读回正常`);
+		console.log(`HTML: ${join(output, "方案码.html")}`);
+		for (const im of made.images) console.log(`PNG: ${join(output, im.name)}`);
 	} else if (command === "validate") {
 		process.stdout.write(JSON.stringify({
 			valid: !issues.some(blocksPersistence),

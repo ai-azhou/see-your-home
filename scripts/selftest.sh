@@ -37,6 +37,10 @@ echo 'validate: valid'
 PYTHONDONTWRITEBYTECODE=1 "$py" skill/scripts/overlay.py input.png plan.json overlay.png > overlay.txt
 echo 'overlay: created'
 node skill/scripts/plan-cli.mjs stats plan.json > stats.json
+node skill/scripts/plan-cli.mjs plan-code plan.json code --n 120 > code.txt
+grep -q '自检读回正常' code.txt && test -s code/方案码.html && test -s code/方案码-01-共$(ls code | grep -c png)张.png || { echo 'plan-code failed'; exit 1; }
+if node skill/scripts/plan-cli.mjs plan-code plan.json code2 --n 50 2> code-err.txt; then echo 'plan-code bad --n accepted'; exit 1; fi
+grep -q '8 的倍数' code-err.txt
 echo 'stats: created'
 # 问题卡状态（v1.2）：questions 列卡；answer 记用户原话；resolve 写回复；状态不对时拒绝且不写文件
 cp plan.json q.json

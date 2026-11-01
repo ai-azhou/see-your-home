@@ -175,6 +175,23 @@ cp -R see-your-home/skill/see-your-home 我的户型/.claude/skills/
 
 碰到承重墙、外墙，它只告诉你事实，不替你判断能不能做。
 
+## 在手机上看：方案码（v1.5）
+
+电脑不在手边、打不开工具，或者想拿给只有手机的家人、设计师看，跟 Agent 说一声就行：
+
+> 我想在手机上看这个方案。
+
+Agent 会生成方案码。手机打开小红书，搜小工具「改改你的家」，点「导入方案码」：
+
+- **电脑上有方案码**：打开 `方案码.html`，它循环播放，手机点「扫一扫」对着屏幕别动。一套放不下一张时会拆成几张，每张标着第几张，手机上写着还差哪几张，读齐自动导入。
+- **图已经在手机上**：点「从相册选」，发图时要发原图，别压缩、别裁剪。
+
+导入后能看 3D、走进屋里、试改造、试装修，发笔记或存相册。
+
+- 方案不经过任何服务器：工具不联网，画面只在手机上识别。
+- 方案码没有加密，拿到图的人都能读出方案内容，别发到公开的地方。
+- 底图不跟着过去。手机上改的内容回不到 Agent 那里，方案改了要重新生成。
+
 ## 效果示意图（v1.1，可选）
 
 想看「装好大概什么感觉」，Agent 会把白模图交给一个能生成图片的模型，换上材质、颜色和光，结构尽量不动：
@@ -215,6 +232,7 @@ node scripts/plan-cli.mjs render 方案.json 图          # 西南、东北斜�
 node scripts/plan-cli.mjs cameras 方案.json           # 列出全部机位和中文说明
 node scripts/plan-cli.mjs render 方案.json 图 --camera room:r-master:w-n
 node scripts/plan-cli.mjs render 方案.json 素材 --camera room:r-living --passes clay,depth,lines,seg,openings
+node scripts/plan-cli.mjs plan-code 方案.json 方案码     # 方案码：手机上的小红书小工具扫它就能打开
 node scripts/plan-cli.mjs schema                      # 在当前目录写出 schema/plan.schema.json
 ```
 

@@ -81,6 +81,10 @@ To furnish, just tell the Agent: “Put a three-seat sofa on the north wall”, 
 
 To edit by hand, download `try-your-home.html` (“Download raw file” on its [GitHub file page](https://github.com/ai-azhou/try-your-home/blob/main/try-your-home.html)), open `交付/方案.json` in it, export the plan JSON when done and tell the Agent “I'm done” with the file location. “Hand to Agent / 交给 Agent” text from the tool can be pasted straight back to the Agent. Answer the review questions (待核对) in the tool and use “Send answers to agent” (把答复交给 Agent); the Agent replies on each question card, and the tool shows which are handled. Since Skill v1.2, plans need try-your-home **v0.10.0 or later** (older versions refuse the new question fields).
 
+## On your phone: plan code (v1.5)
+
+Away from your computer, or showing the plan to someone who only has a phone? Tell the Agent “I want to see this on my phone”. It generates a plan code: open the Xiaohongshu mini tool 改改你的家, tap Import plan code, then scan `方案码.html` on your computer screen or pick the images from your album. Large plans split into numbered pages and the tool shows which are missing. Nothing goes through a server, but the code is not encrypted: don't post it publicly. The underlay image stays behind, and edits made on the phone don't come back to the Agent.
+
 ## Mood images (v1.1, optional)
 
 The Agent hands the white-model render to an image model of your choice, after telling you that the images go to that service. Recipe: white model + depth + line drawing first; if the automatic structure check fails, white model only; at most two retries, then a human looks. It is an impression only; dimensions follow the plan and elevations. A style photo sets the mood only; colours tend to be exaggerated. Only this standard tier ships; masked or local open-model “structure-locked” generation is not validated. Experiment records: [evidence/generation/](evidence/generation/README.md).

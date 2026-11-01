@@ -1,6 +1,6 @@
 {
   "bundler": "vite/rolldown generateBundle",
-  "coreCommit": "2a7947960918d4d07b625b45128333e3e253211a",
+  "coreCommit": "33dcc5061eeaf1ab3f0b2c17801141e5f7cc8e14",
   "inputs": {
     "rolldown/runtime.js": {
       "renderedLength": 1733
@@ -42,7 +42,7 @@
       "renderedLength": 1769
     },
     "src/core/geometry.ts": {
-      "renderedLength": 8185
+      "renderedLength": 8211
     },
     "src/core/protection.ts": {
       "renderedLength": 238
@@ -51,13 +51,13 @@
       "renderedLength": 857
     },
     "src/core/walls.ts": {
-      "renderedLength": 2678
+      "renderedLength": 2688
     },
     "src/core/decor/math.ts": {
       "renderedLength": 1361
     },
     "src/core/decor/faces.ts": {
-      "renderedLength": 5100
+      "renderedLength": 5110
     },
     "src/core/decor/panels.ts": {
       "renderedLength": 4132
@@ -66,7 +66,7 @@
       "renderedLength": 7261
     },
     "src/core/decor/cabinets.ts": {
-      "renderedLength": 6779
+      "renderedLength": 6783
     },
     "src/core/decor/surfaces.ts": {
       "renderedLength": 14686
@@ -378,10 +378,10 @@
       "renderedLength": 8678
     },
     "src/core/opening-symbol.ts": {
-      "renderedLength": 2878
+      "renderedLength": 2884
     },
     "src/core/solids.ts": {
-      "renderedLength": 11853
+      "renderedLength": 11875
     },
     "src/core/merge-rooms.ts": {
       "renderedLength": 417
@@ -391,6 +391,45 @@
     },
     "scripts/decor-edit.ts": {
       "renderedLength": 17539
+    },
+    "scripts/plan-code/normalize.mjs": {
+      "renderedLength": 3170
+    },
+    "src/platform/card/plan-schema.js": {
+      "renderedLength": 3976
+    },
+    "scripts/plan-code/plan-encode.js": {
+      "renderedLength": 6036
+    },
+    "scripts/plan-code/body.mjs": {
+      "renderedLength": 858
+    },
+    "src/platform/card/rs.js": {
+      "renderedLength": 2728
+    },
+    "src/platform/card/card-layout.js": {
+      "renderedLength": 2143
+    },
+    "scripts/plan-code/card-encode.js": {
+      "renderedLength": 2926
+    },
+    "src/platform/card/card-decode.js": {
+      "renderedLength": 14816
+    },
+    "src/platform/card/inflate.js": {
+      "renderedLength": 3844
+    },
+    "src/platform/card/plan-decode.js": {
+      "renderedLength": 2773
+    },
+    "src/platform/card/payload-decode.js": {
+      "renderedLength": 606
+    },
+    "src/platform/card/multipart.js": {
+      "renderedLength": 2764
+    },
+    "scripts/plan-code/make.mjs": {
+      "renderedLength": 6926
     },
     "node_modules/earcut/src/earcut.js": {
       "renderedLength": 19326
@@ -414,7 +453,7 @@
       "renderedLength": 101457
     },
     "scripts/plan.ts": {
-      "renderedLength": 16982
+      "renderedLength": 26332
     }
   },
   "outputs": {
@@ -460,7 +499,7 @@
           "renderedLength": 1769
         },
         "src/core/geometry.ts": {
-          "renderedLength": 8185
+          "renderedLength": 8211
         },
         "src/core/protection.ts": {
           "renderedLength": 238
@@ -469,13 +508,13 @@
           "renderedLength": 857
         },
         "src/core/walls.ts": {
-          "renderedLength": 2678
+          "renderedLength": 2688
         },
         "src/core/decor/math.ts": {
           "renderedLength": 1361
         },
         "src/core/decor/faces.ts": {
-          "renderedLength": 5100
+          "renderedLength": 5110
         },
         "src/core/decor/panels.ts": {
           "renderedLength": 4132
@@ -484,7 +523,7 @@
           "renderedLength": 7261
         },
         "src/core/decor/cabinets.ts": {
-          "renderedLength": 6779
+          "renderedLength": 6783
         },
         "src/core/decor/surfaces.ts": {
           "renderedLength": 14686
@@ -796,10 +835,10 @@
           "renderedLength": 8678
         },
         "src/core/opening-symbol.ts": {
-          "renderedLength": 2878
+          "renderedLength": 2884
         },
         "src/core/solids.ts": {
-          "renderedLength": 11853
+          "renderedLength": 11875
         },
         "src/core/merge-rooms.ts": {
           "renderedLength": 417
@@ -809,6 +848,45 @@
         },
         "scripts/decor-edit.ts": {
           "renderedLength": 17539
+        },
+        "scripts/plan-code/normalize.mjs": {
+          "renderedLength": 3170
+        },
+        "src/platform/card/plan-schema.js": {
+          "renderedLength": 3976
+        },
+        "scripts/plan-code/plan-encode.js": {
+          "renderedLength": 6036
+        },
+        "scripts/plan-code/body.mjs": {
+          "renderedLength": 858
+        },
+        "src/platform/card/rs.js": {
+          "renderedLength": 2728
+        },
+        "src/platform/card/card-layout.js": {
+          "renderedLength": 2143
+        },
+        "scripts/plan-code/card-encode.js": {
+          "renderedLength": 2926
+        },
+        "src/platform/card/card-decode.js": {
+          "renderedLength": 14816
+        },
+        "src/platform/card/inflate.js": {
+          "renderedLength": 3844
+        },
+        "src/platform/card/plan-decode.js": {
+          "renderedLength": 2773
+        },
+        "src/platform/card/payload-decode.js": {
+          "renderedLength": 606
+        },
+        "src/platform/card/multipart.js": {
+          "renderedLength": 2764
+        },
+        "scripts/plan-code/make.mjs": {
+          "renderedLength": 6926
         },
         "node_modules/earcut/src/earcut.js": {
           "renderedLength": 19326
@@ -832,7 +910,7 @@
           "renderedLength": 101457
         },
         "scripts/plan.ts": {
-          "renderedLength": 16982
+          "renderedLength": 26332
         }
       },
       "imports": [
